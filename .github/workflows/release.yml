@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Build extension
+        run: npm run compile
+
+      - name: Package extension
+        run: vsce package --allow-missing-repository
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: rubin-*.vsix
+          generate_release_notes: true
+          body: |
+            ## 🚀 Rubin v${{ steps.version.outputs.VERSION }}
+
+            ### Installation
+            1. Download `rubin-${{ steps.version.outputs.VERSION }}.vsix` below
+            2. In VS Code: `Cmd+Shift+P` → "Install from VSIX"
+            3. Select the downloaded file
+            4. Reload VS Code
+
+            ### Prerequisites
+            - [Ollama](https://ollama.ai/) installed and running
+            - A code model: `ollama pull deepseek-coder:6.7b`
+
+            ---
+            See [README](https://github.com/${{ github.repository }}#readme) for full documentation.
