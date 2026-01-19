@@ -2,12 +2,11 @@ import * as vscode from 'vscode';
 import { LocalCopilotCompletionProvider } from './completionProvider';
 import { getConfig, setEnabled, setModel, onConfigChange } from './config';
 import { getOllamaClient } from './ollamaClient';
-import { RubinChatProvider } from './chatProvider';
-import { AgentPanel } from './agentPanel';
+import { UnifiedPanelProvider } from './unifiedPanel';
 
 let statusBarItem: vscode.StatusBarItem;
 let completionProvider: LocalCopilotCompletionProvider;
-let chatProvider: RubinChatProvider;
+let unifiedPanel: UnifiedPanelProvider;
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Rubin is now active!');
@@ -23,13 +22,13 @@ export function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(providerDisposable);
 
-    // Create and register the chat provider
-    chatProvider = new RubinChatProvider(context.extensionUri);
-    const chatViewDisposable = vscode.window.registerWebviewViewProvider(
-        RubinChatProvider.viewType,
-        chatProvider
+    // Create and register the unified panel (chat + agent)
+    unifiedPanel = new UnifiedPanelProvider(context.extensionUri);
+    const unifiedViewDisposable = vscode.window.registerWebviewViewProvider(
+        UnifiedPanelProvider.viewType,
+        unifiedPanel
     );
-    context.subscriptions.push(chatViewDisposable);
+    context.subscriptions.push(unifiedViewDisposable);
 
     // Create status bar item
     statusBarItem = vscode.window.createStatusBarItem(
@@ -101,9 +100,9 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(checkConnectionCommand);
 
-    // Command to open chat panel
+    // Command to open unified panel
     const openChatCommand = vscode.commands.registerCommand('rubin.openChat', () => {
-        vscode.commands.executeCommand('rubin.chatView.focus');
+        vscode.commands.executeCommand('rubin.unifiedView.focus');
     });
     context.subscriptions.push(openChatCommand);
 
@@ -114,8 +113,8 @@ export function activate(context: vscode.ExtensionContext) {
             const selection = editor.selection;
             const selectedText = editor.document.getText(selection);
             if (selectedText) {
-                chatProvider.addCodeToChat(selectedText, editor.document.languageId);
-                vscode.commands.executeCommand('rubin.chatView.focus');
+                unifiedPanel.addCodeToChat(selectedText, editor.document.languageId);
+                vscode.commands.executeCommand('rubin.unifiedView.focus');
             } else {
                 vscode.window.showInformationMessage('Select some code first to ask about it.');
             }
@@ -123,9 +122,9 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(askAboutCodeCommand);
 
-    // Command to start agent mode
+    // Command to start agent mode (opens unified panel in agent mode)
     const startAgentCommand = vscode.commands.registerCommand('rubin.startAgent', () => {
-        AgentPanel.createOrShow(context.extensionUri);
+        vscode.commands.executeCommand('rubin.unifiedView.focus');
     });
     context.subscriptions.push(startAgentCommand);
 

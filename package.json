@@ -38,8 +38,8 @@
       "rubin-chat": [
         {
           "type": "webview",
-          "id": "rubin.chatView",
-          "name": "Chat"
+          "id": "rubin.unifiedView",
+          "name": "Rubin"
         }
       ]
     },
