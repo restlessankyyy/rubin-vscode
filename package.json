@@ -2,7 +2,7 @@
   "name": "rubin",
   "displayName": "Rubin",
   "description": "AI-powered code completions using local LLMs through Ollama",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "publisher": "local-dev",
   "engines": {
     "vscode": "^1.80.0"
