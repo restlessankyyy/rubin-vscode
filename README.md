@@ -1,6 +1,6 @@
 # Rubin 🤖
 
-A VS Code extension that provides AI-powered code completions and chat using local LLMs through Ollama. Like GitHub Copilot, but 100% local and private!
+A VS Code extension that provides AI-powered code completions, chat, and **autonomous agent mode** using local LLMs through Ollama. Like GitHub Copilot, but 100% local and private!
 
 ![Rubin Demo](https://img.shields.io/badge/Ollama-Powered-blue) ![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC)
 
@@ -8,6 +8,7 @@ A VS Code extension that provides AI-powered code completions and chat using loc
 
 - 🔌 **Inline Code Completions** - Ghost text suggestions as you type
 - 💬 **Chat Sidebar** - Ask questions, explain code, get help
+- 🤖 **Agent Mode** - Autonomous AI that can run commands, read/write files, and complete multi-step tasks
 - 🎯 **Model Selector** - Switch between models directly in chat
 - 🏠 **100% Local** - All inference happens on your machine
 - ⚙️ **Configurable** - Choose your model, adjust parameters
@@ -71,11 +72,22 @@ vsce package --allow-missing-repository
 3. Ask questions about your code
 4. Select code and right-click → "Rubin: Ask About Selected Code"
 
+### Agent Mode
+1. Press `Cmd+Shift+G` to open Agent Mode
+2. Describe a task (e.g., "Create a hello.ts file with a greeting function")
+3. Watch the agent work step-by-step
+4. Agent can:
+   - Run terminal commands
+   - Read and write files
+   - Search your workspace
+   - Complete multi-step tasks autonomously
+
 ## ⌨️ Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
 | `Cmd+Shift+R` | Open Rubin Chat |
+| `Cmd+Shift+G` | Open Agent Mode |
 | `Cmd+Shift+A` | Ask about selected code |
 | `Tab` | Accept inline completion |
 | `Escape` | Dismiss suggestion |
@@ -87,6 +99,7 @@ vsce package --allow-missing-repository
 - **Rubin: Check Ollama Connection** - Verify connectivity
 - **Rubin: Open Chat** - Open the chat sidebar
 - **Rubin: Ask About Selected Code** - Chat about selected code
+- **Rubin: Start Agent Mode** - Open autonomous agent panel
 
 ## ⚙️ Configuration
 

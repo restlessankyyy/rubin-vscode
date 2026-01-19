@@ -3,6 +3,7 @@ import { LocalCopilotCompletionProvider } from './completionProvider';
 import { getConfig, setEnabled, setModel, onConfigChange } from './config';
 import { getOllamaClient } from './ollamaClient';
 import { RubinChatProvider } from './chatProvider';
+import { AgentPanel } from './agentPanel';
 
 let statusBarItem: vscode.StatusBarItem;
 let completionProvider: LocalCopilotCompletionProvider;
@@ -121,6 +122,12 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
     context.subscriptions.push(askAboutCodeCommand);
+
+    // Command to start agent mode
+    const startAgentCommand = vscode.commands.registerCommand('rubin.startAgent', () => {
+        AgentPanel.createOrShow(context.extensionUri);
+    });
+    context.subscriptions.push(startAgentCommand);
 
     // Listen for configuration changes
     const configChangeDisposable = onConfigChange((newConfig) => {
