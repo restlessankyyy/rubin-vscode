@@ -1,0 +1,145 @@
+{
+  "name": "rubin",
+  "displayName": "Rubin",
+  "description": "AI-powered code completions using local LLMs through Ollama",
+  "version": "0.1.0",
+  "publisher": "local-dev",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Machine Learning",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "copilot",
+    "ollama",
+    "code completion",
+    "llm",
+    "local"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "rubin-chat",
+          "title": "Rubin",
+          "icon": "$(hubot)"
+        }
+      ]
+    },
+    "views": {
+      "rubin-chat": [
+        {
+          "type": "webview",
+          "id": "rubin.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Rubin",
+      "properties": {
+        "rubin.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable Local Copilot completions"
+        },
+        "rubin.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Ollama server URL"
+        },
+        "rubin.model": {
+          "type": "string",
+          "default": "codellama",
+          "description": "Model to use for completions (e.g., codellama, gemma:7b, deepseek-coder)"
+        },
+        "rubin.maxTokens": {
+          "type": "number",
+          "default": 150,
+          "description": "Maximum number of tokens to generate"
+        },
+        "rubin.temperature": {
+          "type": "number",
+          "default": 0.2,
+          "description": "Temperature for generation (0.0-1.0, lower = more deterministic)"
+        },
+        "rubin.debounceMs": {
+          "type": "number",
+          "default": 300,
+          "description": "Debounce delay in milliseconds before triggering completion"
+        },
+        "rubin.contextLines": {
+          "type": "number",
+          "default": 50,
+          "description": "Number of lines of context to include before cursor"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "rubin.toggle",
+        "title": "Rubin: Toggle Enable/Disable"
+      },
+      {
+        "command": "rubin.selectModel",
+        "title": "Rubin: Select Model"
+      },
+      {
+        "command": "rubin.checkConnection",
+        "title": "Rubin: Check Ollama Connection"
+      },
+      {
+        "command": "rubin.openChat",
+        "title": "Rubin: Open Chat"
+      },
+      {
+        "command": "rubin.askAboutCode",
+        "title": "Rubin: Ask About Selected Code"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "rubin.askAboutCode",
+          "when": "editorHasSelection",
+          "group": "rubin"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "rubin.openChat",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r"
+      },
+      {
+        "command": "rubin.askAboutCode",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a",
+        "when": "editorHasSelection"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.80.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.0"
+  }
+}
