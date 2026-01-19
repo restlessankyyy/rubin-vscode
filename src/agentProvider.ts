@@ -59,6 +59,25 @@ const AGENT_TOOLS: AgentTool[] = [
         },
     },
     {
+        name: 'editFile',
+        description: 'Edit specific lines in a file. Better than writeFile for making targeted changes.',
+        parameters: {
+            filePath: { type: 'string', description: 'Relative path to the file', required: true },
+            startLine: { type: 'number', description: 'Starting line number (1-based)', required: true },
+            endLine: { type: 'number', description: 'Ending line number (1-based, inclusive)', required: true },
+            newContent: { type: 'string', description: 'New content to replace the specified lines', required: true },
+        },
+    },
+    {
+        name: 'insertCode',
+        description: 'Insert code at a specific line in a file without replacing existing content.',
+        parameters: {
+            filePath: { type: 'string', description: 'Relative path to the file', required: true },
+            lineNumber: { type: 'number', description: 'Line number to insert at (1-based)', required: true },
+            content: { type: 'string', description: 'Content to insert', required: true },
+        },
+    },
+    {
         name: 'searchFiles',
         description: 'Search for files in the workspace by name pattern.',
         parameters: {
@@ -66,10 +85,60 @@ const AGENT_TOOLS: AgentTool[] = [
         },
     },
     {
+        name: 'searchCode',
+        description: 'Search for text or regex patterns across all files in the workspace.',
+        parameters: {
+            query: { type: 'string', description: 'Text or regex pattern to search for', required: true },
+            filePattern: { type: 'string', description: 'Optional glob pattern to filter files (e.g., "**/*.ts")', required: false },
+        },
+    },
+    {
         name: 'listDirectory',
         description: 'List files and folders in a directory.',
         parameters: {
             dirPath: { type: 'string', description: 'Relative path to the directory from workspace root (use "." for root)', required: true },
+        },
+    },
+    {
+        name: 'getSymbols',
+        description: 'Get all symbols (functions, classes, variables) defined in a file.',
+        parameters: {
+            filePath: { type: 'string', description: 'Relative path to the file', required: true },
+        },
+    },
+    {
+        name: 'findReferences',
+        description: 'Find all references to a symbol across the workspace.',
+        parameters: {
+            filePath: { type: 'string', description: 'File where the symbol is defined', required: true },
+            symbolName: { type: 'string', description: 'Name of the symbol to find references for', required: true },
+            line: { type: 'number', description: 'Line number where the symbol is located', required: true },
+        },
+    },
+    {
+        name: 'createDirectory',
+        description: 'Create a new directory (and parent directories if needed).',
+        parameters: {
+            dirPath: { type: 'string', description: 'Relative path to the directory to create', required: true },
+        },
+    },
+    {
+        name: 'deleteFile',
+        description: 'Delete a file or directory from the workspace.',
+        parameters: {
+            filePath: { type: 'string', description: 'Relative path to the file or directory to delete', required: true },
+        },
+    },
+    {
+        name: 'getGitStatus',
+        description: 'Get the current git status showing modified, staged, and untracked files.',
+        parameters: {},
+    },
+    {
+        name: 'gitDiff',
+        description: 'Get the git diff for a specific file or all changes.',
+        parameters: {
+            filePath: { type: 'string', description: 'Optional file path to get diff for. Omit for all changes.', required: false },
         },
     },
 ];
@@ -165,7 +234,9 @@ export class AgentProvider {
                 // Generate AI response
                 const response = await this.generateResponse(systemPrompt);
 
-                if (!this.isRunning) break; // Check if stopped
+                if (!this.isRunning) {
+                    break; // Check if stopped
+                }
 
                 if (!response) {
                     finalResponse = 'Failed to get response from the model.';
@@ -384,8 +455,12 @@ START NOW - analyze the request and use the appropriate tool.`;
                 let braceCount = 0;
                 let endIndex = 0;
                 for (let i = 0; i < jsonStr.length; i++) {
-                    if (jsonStr[i] === '{') braceCount++;
-                    if (jsonStr[i] === '}') braceCount--;
+                    if (jsonStr[i] === '{') {
+                        braceCount++;
+                    }
+                    if (jsonStr[i] === '}') {
+                        braceCount--;
+                    }
                     if (braceCount === 0) {
                         endIndex = i + 1;
                         break;
@@ -410,7 +485,7 @@ START NOW - analyze the request and use the appropriate tool.`;
 
     private async executeTool(toolCall: ToolCall, workspaceFolder: string): Promise<ToolResult> {
         // Sensitive tools require approval
-        if (toolCall.name === 'runCommand' || toolCall.name === 'writeFile') {
+        if (toolCall.name === 'runCommand' || toolCall.name === 'writeFile' || toolCall.name === 'editFile' || toolCall.name === 'deleteFile' || toolCall.name === 'insertCode') {
             this.isWaitingForApproval = true;
             this.emitStep({
                 type: 'approval_requested',
@@ -441,10 +516,48 @@ START NOW - analyze the request and use the appropriate tool.`;
                     toolCall.parameters.content,
                     workspaceFolder
                 );
+            case 'editFile':
+                return this.executeEditFile(
+                    toolCall.parameters.filePath,
+                    parseInt(toolCall.parameters.startLine),
+                    parseInt(toolCall.parameters.endLine),
+                    toolCall.parameters.newContent,
+                    workspaceFolder
+                );
+            case 'insertCode':
+                return this.executeInsertCode(
+                    toolCall.parameters.filePath,
+                    parseInt(toolCall.parameters.lineNumber),
+                    toolCall.parameters.content,
+                    workspaceFolder
+                );
             case 'searchFiles':
                 return this.executeSearchFiles(toolCall.parameters.pattern, workspaceFolder);
+            case 'searchCode':
+                return this.executeSearchCode(
+                    toolCall.parameters.query,
+                    toolCall.parameters.filePattern,
+                    workspaceFolder
+                );
             case 'listDirectory':
                 return this.executeListDirectory(toolCall.parameters.dirPath, workspaceFolder);
+            case 'getSymbols':
+                return this.executeGetSymbols(toolCall.parameters.filePath, workspaceFolder);
+            case 'findReferences':
+                return this.executeFindReferences(
+                    toolCall.parameters.filePath,
+                    toolCall.parameters.symbolName,
+                    parseInt(toolCall.parameters.line),
+                    workspaceFolder
+                );
+            case 'createDirectory':
+                return this.executeCreateDirectory(toolCall.parameters.dirPath, workspaceFolder);
+            case 'deleteFile':
+                return this.executeDeleteFile(toolCall.parameters.filePath, workspaceFolder);
+            case 'getGitStatus':
+                return this.executeGitStatus(workspaceFolder);
+            case 'gitDiff':
+                return this.executeGitDiff(toolCall.parameters.filePath, workspaceFolder);
             default:
                 return { success: false, output: '', error: `Unknown tool: ${toolCall.name}` };
         }
@@ -581,6 +694,321 @@ START NOW - analyze the request and use the appropriate tool.`;
                 error: error instanceof Error ? error.message : 'Unknown error'
             };
         }
+    }
+
+    private async executeEditFile(
+        filePath: string,
+        startLine: number,
+        endLine: number,
+        newContent: string,
+        workspaceFolder: string
+    ): Promise<ToolResult> {
+        try {
+            const fullPath = path.join(workspaceFolder, filePath);
+
+            if (!fullPath.startsWith(workspaceFolder)) {
+                return { success: false, output: '', error: 'Path is outside workspace' };
+            }
+
+            if (!fs.existsSync(fullPath)) {
+                return { success: false, output: '', error: 'File does not exist' };
+            }
+
+            const content = fs.readFileSync(fullPath, 'utf-8');
+            const lines = content.split('\n');
+
+            if (startLine < 1 || endLine > lines.length || startLine > endLine) {
+                return { success: false, output: '', error: `Invalid line range. File has ${lines.length} lines.` };
+            }
+
+            // Replace the specified lines
+            const newLines = newContent.split('\n');
+            lines.splice(startLine - 1, endLine - startLine + 1, ...newLines);
+
+            fs.writeFileSync(fullPath, lines.join('\n'), 'utf-8');
+
+            // Open the file at the edited location
+            const doc = await vscode.workspace.openTextDocument(fullPath);
+            await vscode.window.showTextDocument(doc, { preview: false });
+
+            return { success: true, output: `Edited lines ${startLine}-${endLine} in ${filePath}` };
+        } catch (error) {
+            return {
+                success: false,
+                output: '',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    private async executeInsertCode(
+        filePath: string,
+        lineNumber: number,
+        content: string,
+        workspaceFolder: string
+    ): Promise<ToolResult> {
+        try {
+            const fullPath = path.join(workspaceFolder, filePath);
+
+            if (!fullPath.startsWith(workspaceFolder)) {
+                return { success: false, output: '', error: 'Path is outside workspace' };
+            }
+
+            if (!fs.existsSync(fullPath)) {
+                return { success: false, output: '', error: 'File does not exist' };
+            }
+
+            const fileContent = fs.readFileSync(fullPath, 'utf-8');
+            const lines = fileContent.split('\n');
+
+            if (lineNumber < 1 || lineNumber > lines.length + 1) {
+                return { success: false, output: '', error: `Invalid line number. File has ${lines.length} lines.` };
+            }
+
+            // Insert at the specified line
+            const newLines = content.split('\n');
+            lines.splice(lineNumber - 1, 0, ...newLines);
+
+            fs.writeFileSync(fullPath, lines.join('\n'), 'utf-8');
+
+            const doc = await vscode.workspace.openTextDocument(fullPath);
+            await vscode.window.showTextDocument(doc, { preview: false });
+
+            return { success: true, output: `Inserted ${newLines.length} lines at line ${lineNumber} in ${filePath}` };
+        } catch (error) {
+            return {
+                success: false,
+                output: '',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    private async executeSearchCode(
+        query: string,
+        filePattern: string | undefined,
+        workspaceFolder: string
+    ): Promise<ToolResult> {
+        try {
+            const pattern = filePattern || '**/*';
+            const files = await vscode.workspace.findFiles(pattern, '**/node_modules/**', 100);
+            const results: string[] = [];
+            const maxResultsPerFile = 5;
+            const maxTotalResults = 30;
+
+            for (const file of files) {
+                if (results.length >= maxTotalResults) { break; }
+
+                try {
+                    const content = fs.readFileSync(file.fsPath, 'utf-8');
+                    const lines = content.split('\n');
+                    let fileResultCount = 0;
+
+                    for (let i = 0; i < lines.length && fileResultCount < maxResultsPerFile; i++) {
+                        if (lines[i].toLowerCase().includes(query.toLowerCase())) {
+                            const relativePath = path.relative(workspaceFolder, file.fsPath);
+                            results.push(`${relativePath}:${i + 1}: ${lines[i].trim().substring(0, 100)}`);
+                            fileResultCount++;
+                        }
+                    }
+                } catch {
+                    // Skip binary or unreadable files
+                }
+            }
+
+            if (results.length === 0) {
+                return { success: true, output: `No matches found for "${query}"` };
+            }
+
+            return {
+                success: true,
+                output: `Found ${results.length} matches:\n${results.join('\n')}`
+            };
+        } catch (error) {
+            return {
+                success: false,
+                output: '',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    private async executeGetSymbols(filePath: string, workspaceFolder: string): Promise<ToolResult> {
+        try {
+            const fullPath = path.join(workspaceFolder, filePath);
+            const uri = vscode.Uri.file(fullPath);
+
+            const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+                'vscode.executeDocumentSymbolProvider',
+                uri
+            );
+
+            if (!symbols || symbols.length === 0) {
+                return { success: true, output: 'No symbols found in this file.' };
+            }
+
+            const formatSymbols = (syms: vscode.DocumentSymbol[], indent: string = ''): string => {
+                return syms.map(s => {
+                    const kind = vscode.SymbolKind[s.kind];
+                    let result = `${indent}${kind}: ${s.name} (line ${s.range.start.line + 1})`;
+                    if (s.children && s.children.length > 0) {
+                        result += '\n' + formatSymbols(s.children, indent + '  ');
+                    }
+                    return result;
+                }).join('\n');
+            };
+
+            return { success: true, output: `Symbols in ${filePath}:\n${formatSymbols(symbols)}` };
+        } catch (error) {
+            return {
+                success: false,
+                output: '',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    private async executeFindReferences(
+        filePath: string,
+        symbolName: string,
+        line: number,
+        workspaceFolder: string
+    ): Promise<ToolResult> {
+        try {
+            const fullPath = path.join(workspaceFolder, filePath);
+            const uri = vscode.Uri.file(fullPath);
+            const doc = await vscode.workspace.openTextDocument(uri);
+            const lineText = doc.lineAt(line - 1).text;
+            const column = lineText.indexOf(symbolName);
+
+            if (column === -1) {
+                return { success: false, output: '', error: `Symbol "${symbolName}" not found on line ${line}` };
+            }
+
+            const position = new vscode.Position(line - 1, column);
+            const locations = await vscode.commands.executeCommand<vscode.Location[]>(
+                'vscode.executeReferenceProvider',
+                uri,
+                position
+            );
+
+            if (!locations || locations.length === 0) {
+                return { success: true, output: `No references found for "${symbolName}"` };
+            }
+
+            const refs = locations.map(loc => {
+                const relPath = path.relative(workspaceFolder, loc.uri.fsPath);
+                return `${relPath}:${loc.range.start.line + 1}:${loc.range.start.character + 1}`;
+            });
+
+            return { success: true, output: `Found ${refs.length} references:\n${refs.join('\n')}` };
+        } catch (error) {
+            return {
+                success: false,
+                output: '',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    private async executeCreateDirectory(dirPath: string, workspaceFolder: string): Promise<ToolResult> {
+        try {
+            const fullPath = path.join(workspaceFolder, dirPath);
+
+            if (!fullPath.startsWith(workspaceFolder)) {
+                return { success: false, output: '', error: 'Path is outside workspace' };
+            }
+
+            fs.mkdirSync(fullPath, { recursive: true });
+            return { success: true, output: `Created directory: ${dirPath}` };
+        } catch (error) {
+            return {
+                success: false,
+                output: '',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    private async executeDeleteFile(filePath: string, workspaceFolder: string): Promise<ToolResult> {
+        try {
+            const fullPath = path.join(workspaceFolder, filePath);
+
+            if (!fullPath.startsWith(workspaceFolder)) {
+                return { success: false, output: '', error: 'Path is outside workspace' };
+            }
+
+            if (!fs.existsSync(fullPath)) {
+                return { success: false, output: '', error: 'File or directory does not exist' };
+            }
+
+            const stat = fs.statSync(fullPath);
+            if (stat.isDirectory()) {
+                fs.rmSync(fullPath, { recursive: true });
+            } else {
+                fs.unlinkSync(fullPath);
+            }
+
+            return { success: true, output: `Deleted: ${filePath}` };
+        } catch (error) {
+            return {
+                success: false,
+                output: '',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    private async executeGitStatus(workspaceFolder: string): Promise<ToolResult> {
+        return new Promise((resolve) => {
+            cp.exec('git status --porcelain', { cwd: workspaceFolder }, (error, stdout, stderr) => {
+                if (error) {
+                    resolve({ success: false, output: '', error: stderr || error.message });
+                } else {
+                    if (!stdout.trim()) {
+                        resolve({ success: true, output: 'Working tree is clean - no changes.' });
+                    } else {
+                        const lines = stdout.trim().split('\n');
+                        const formatted = lines.map(line => {
+                            const status = line.substring(0, 2);
+                            const file = line.substring(3);
+                            let statusText = '';
+                            if (status.includes('M')) { statusText = 'Modified'; }
+                            else if (status.includes('A')) { statusText = 'Added'; }
+                            else if (status.includes('D')) { statusText = 'Deleted'; }
+                            else if (status.includes('?')) { statusText = 'Untracked'; }
+                            else if (status.includes('R')) { statusText = 'Renamed'; }
+                            else { statusText = status.trim(); }
+                            return `${statusText}: ${file}`;
+                        });
+                        resolve({ success: true, output: `Git Status:\n${formatted.join('\n')}` });
+                    }
+                }
+            });
+        });
+    }
+
+    private async executeGitDiff(filePath: string | undefined, workspaceFolder: string): Promise<ToolResult> {
+        return new Promise((resolve) => {
+            const command = filePath ? `git diff -- "${filePath}"` : 'git diff';
+            cp.exec(command, { cwd: workspaceFolder, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+                if (error) {
+                    resolve({ success: false, output: '', error: stderr || error.message });
+                } else {
+                    if (!stdout.trim()) {
+                        resolve({ success: true, output: 'No differences found.' });
+                    } else {
+                        // Limit diff output
+                        const lines = stdout.split('\n');
+                        const limited = lines.slice(0, 100).join('\n');
+                        const output = lines.length > 100 
+                            ? limited + `\n\n... (${lines.length - 100} more lines truncated)`
+                            : limited;
+                        resolve({ success: true, output });
+                    }
+                }
+            });
+        });
     }
 }
 

@@ -3,15 +3,23 @@ import { LocalCopilotCompletionProvider } from './completionProvider';
 import { getConfig, setEnabled, setModel, onConfigChange } from './config';
 import { getOllamaClient } from './ollamaClient';
 import { UnifiedPanelProvider } from './unifiedPanel';
+import { logger } from './logger';
+import { registerCodeActionProvider, registerCodeActionCommands } from './codeActions';
+import { registerInlineChatCommands } from './inlineChat';
+import { registerGitCommands } from './gitIntegration';
+import { getWorkspaceIndexer } from './workspaceIndexer';
 
 let statusBarItem: vscode.StatusBarItem;
 let completionProvider: LocalCopilotCompletionProvider;
 let unifiedPanel: UnifiedPanelProvider;
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('Rubin is now active!');
+    // Initialize logger first
+    logger.init(context);
+    logger.info('Rubin extension activating...');
 
-    const config = getConfig();
+    try {
+        const config = getConfig();
 
     // Create and register the completion provider
     completionProvider = new LocalCopilotCompletionProvider();
@@ -29,6 +37,23 @@ export function activate(context: vscode.ExtensionContext) {
         unifiedPanel
     );
     context.subscriptions.push(unifiedViewDisposable);
+
+    // Register code actions (Explain, Fix, Generate Tests, etc.)
+    registerCodeActionProvider(context);
+    registerCodeActionCommands(context, (message) => {
+        unifiedPanel.sendMessageToChat(message);
+    });
+
+    // Register inline chat (edit in place)
+    registerInlineChatCommands(context);
+
+    // Register git commands (commit message generation)
+    registerGitCommands(context);
+
+    // Start workspace indexing in background
+    getWorkspaceIndexer().buildIndex().catch(err => {
+        logger.warn('Failed to build workspace index', err);
+    });
 
     // Create status bar item
     statusBarItem = vscode.window.createStatusBarItem(
@@ -132,11 +157,18 @@ export function activate(context: vscode.ExtensionContext) {
     const configChangeDisposable = onConfigChange((newConfig) => {
         completionProvider.updateConfig(newConfig);
         updateStatusBar(newConfig.enabled, newConfig.model);
+        logger.debug('Configuration updated', newConfig);
     });
     context.subscriptions.push(configChangeDisposable);
 
     // Initial connection check (non-blocking)
     checkConnectionOnStartup();
+
+    logger.info('Rubin extension activated successfully');
+    } catch (error) {
+        logger.error('Failed to activate Rubin extension', error);
+        throw error;
+    }
 }
 
 function updateStatusBar(enabled: boolean, model: string): void {
@@ -155,9 +187,11 @@ async function checkConnectionOnStartup(): Promise<void> {
     const config = getConfig();
     const client = getOllamaClient(config.serverUrl);
 
+    logger.debug(`Checking connection to Ollama at ${config.serverUrl}`);
     const connected = await client.checkConnection();
 
     if (!connected) {
+        logger.warn('Cannot connect to Ollama on startup');
         const action = await vscode.window.showWarningMessage(
             'Rubin: Cannot connect to Ollama. Make sure it\'s running.',
             'Check Connection',
@@ -169,9 +203,11 @@ async function checkConnectionOnStartup(): Promise<void> {
         } else if (action === 'Open Settings') {
             vscode.commands.executeCommand('workbench.action.openSettings', 'rubin');
         }
+    } else {
+        logger.info('Successfully connected to Ollama');
     }
 }
 
 export function deactivate() {
-    console.log('Rubin deactivated');
+    logger.info('Rubin extension deactivated');
 }
