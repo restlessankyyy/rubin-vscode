@@ -3,6 +3,7 @@ import * as path from 'path';
 import { getConfig, setModel } from './config';
 import { getOllamaClient } from './ollamaClient';
 import { getAgentProvider, AgentStep } from './agentProvider';
+import { ContextManager } from './contextManager';
 
 export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'rubin.unifiedView';
@@ -10,9 +11,13 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
     private _conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
     private _attachedFiles: Array<{ name: string; content: string; language: string }> = [];
     private _currentMode: 'chat' | 'agent' = 'chat';
+    private _contextManager: ContextManager;
 
-    constructor(private readonly _extensionUri: vscode.Uri) { }
+    constructor(private readonly _extensionUri: vscode.Uri) {
+        this._contextManager = new ContextManager();
+    }
 
+    // ... resolveWebviewView ...
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
@@ -30,6 +35,7 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
         // Handle messages from the webview
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
+                // ... cases ...
                 case 'sendMessage':
                     if (this._currentMode === 'agent') {
                         await this._handleAgentMessage(data.message);
@@ -133,27 +139,17 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
             const config = getConfig();
             const client = getOllamaClient(config.serverUrl);
 
-            // Build context from attached files
-            let context = '';
-            for (const file of this._attachedFiles) {
-                context += `\n\nFile: ${file.name}\n\`\`\`${file.language}\n${file.content}\n\`\`\``;
-            }
+            // 1. Gather comprehensive context
+            const contextItems = await this._contextManager.getContext();
+            let context = this._contextManager.formatContextForPrompt(contextItems);
 
-            // Get current editor context if no files attached
-            if (this._attachedFiles.length === 0) {
-                const editor = vscode.window.activeTextEditor;
-                if (editor) {
-                    const selection = editor.selection;
-                    const selectedText = editor.document.getText(selection);
-                    if (selectedText) {
-                        context = `\n\nSelected code:\n\`\`\`${editor.document.languageId}\n${selectedText}\n\`\`\``;
-                    } else {
-                        const currentLine = editor.selection.active.line;
-                        const startLine = Math.max(0, currentLine - 10);
-                        const endLine = Math.min(editor.document.lineCount - 1, currentLine + 10);
-                        const range = new vscode.Range(startLine, 0, endLine, editor.document.lineAt(endLine).text.length);
-                        context = `\n\nCurrent file (${path.basename(editor.document.fileName)}):\n\`\`\`${editor.document.languageId}\n${editor.document.getText(range)}\n\`\`\``;
-                    }
+            // 2. Add manually attached files (if they aren't already covered)
+            // Note: ContextManager picks up active/open files, but if user explicitly
+            // pinned a file that is now closed, we should still include it.
+            // For simplicity, we append attached files if not present.
+            for (const file of this._attachedFiles) {
+                if (!context.includes(`Filename: ${file.name}`)) {
+                    context += `\n\n### Attached File: ${file.name}\n\`\`\`${file.language}\n${file.content}\n\`\`\``;
                 }
             }
 
@@ -179,6 +175,7 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
         }
     }
 
+
     private async _handleAgentMessage(message: string) {
         this._postMessage({ type: 'userMessage', content: message });
         this._postMessage({ type: 'agentStarted' });
@@ -186,12 +183,21 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
         try {
             const agent = getAgentProvider();
 
-            // Add file context to message if files are attached
-            let fullMessage = message;
+            // 1. Gather comprehensive context
+            const contextItems = await this._contextManager.getContext();
+            let fullMessage = this._contextManager.formatContextForPrompt(contextItems) + `\n\nTask: ${message}`;
+
+            // 2. Add manually attached files if not already covered
+            // (Similar logic to chat, ensure no duplicates for files already in context)
             if (this._attachedFiles.length > 0) {
-                fullMessage += '\n\nContext files:';
+                let extraContext = '';
                 for (const file of this._attachedFiles) {
-                    fullMessage += `\n\nFile: ${file.name}\n\`\`\`${file.language}\n${file.content}\n\`\`\``;
+                    if (!fullMessage.includes(`Active File: ${file.name}`) && !fullMessage.includes(`Open File: ${file.name}`)) {
+                        extraContext += `\n\nFile: ${file.name}\n\`\`\`${file.language}\n${file.content}\n\`\`\``;
+                    }
+                }
+                if (extraContext) {
+                    fullMessage = `Context files:${extraContext}\n\n${fullMessage}`;
                 }
             }
 
