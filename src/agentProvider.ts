@@ -288,23 +288,70 @@ START NOW - analyze the request and use the appropriate tool.`;
     }
 
     private parseToolCall(response: string): ToolCall | null {
-        // Look for tool call JSON block
-        const toolMatch = response.match(/```tool\s*\n?([\s\S]*?)\n?```/);
+        // Try multiple formats since different models output differently
 
-        if (!toolMatch) {
-            return null;
+        // 1. Try ```tool wrapped format
+        const toolMatch = response.match(/```tool\s*\n?([\s\S]*?)\n?```/);
+        if (toolMatch) {
+            try {
+                const toolJson = JSON.parse(toolMatch[1].trim());
+                if (toolJson.name && typeof toolJson.name === 'string') {
+                    return {
+                        name: toolJson.name,
+                        parameters: toolJson.parameters || {},
+                    };
+                }
+            } catch (e) {
+                console.error('Failed to parse wrapped tool call:', e);
+            }
         }
 
-        try {
-            const toolJson = JSON.parse(toolMatch[1].trim());
-            if (toolJson.name && typeof toolJson.name === 'string') {
-                return {
-                    name: toolJson.name,
-                    parameters: toolJson.parameters || {},
-                };
+        // 2. Try raw JSON format (model outputs JSON directly)
+        const jsonMatch = response.match(/\{"name":\s*"(\w+)",\s*"parameters":\s*(\{[^}]+\})\}/);
+        if (jsonMatch) {
+            try {
+                const fullMatch = jsonMatch[0];
+                const toolJson = JSON.parse(fullMatch);
+                if (toolJson.name && typeof toolJson.name === 'string') {
+                    return {
+                        name: toolJson.name,
+                        parameters: toolJson.parameters || {},
+                    };
+                }
+            } catch (e) {
+                console.error('Failed to parse raw JSON tool call:', e);
             }
-        } catch (e) {
-            console.error('Failed to parse tool call:', e);
+        }
+
+        // 3. Try to find any valid JSON object with name and parameters
+        const anyJsonMatch = response.match(/\{[\s\S]*?"name"[\s\S]*?"parameters"[\s\S]*?\}/);
+        if (anyJsonMatch) {
+            try {
+                // Clean up any trailing garbage (like </start_of_turn>)
+                let jsonStr = anyJsonMatch[0];
+                // Find the matching closing brace
+                let braceCount = 0;
+                let endIndex = 0;
+                for (let i = 0; i < jsonStr.length; i++) {
+                    if (jsonStr[i] === '{') braceCount++;
+                    if (jsonStr[i] === '}') braceCount--;
+                    if (braceCount === 0) {
+                        endIndex = i + 1;
+                        break;
+                    }
+                }
+                jsonStr = jsonStr.substring(0, endIndex);
+
+                const toolJson = JSON.parse(jsonStr);
+                if (toolJson.name && typeof toolJson.name === 'string') {
+                    return {
+                        name: toolJson.name,
+                        parameters: toolJson.parameters || {},
+                    };
+                }
+            } catch (e) {
+                console.error('Failed to parse any JSON tool call:', e);
+            }
         }
 
         return null;
