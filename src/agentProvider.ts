@@ -24,7 +24,7 @@ export interface ToolResult {
 }
 
 export interface AgentStep {
-    type: 'thinking' | 'tool_call' | 'tool_result' | 'response';
+    type: 'thinking' | 'tool_call' | 'tool_result' | 'response' | 'approval_requested';
     content: string;
     toolName?: string;
     toolParams?: Record<string, string>;
@@ -80,10 +80,30 @@ export class AgentProvider {
     private conversationHistory: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
     private eventCallback: AgentEventCallback | null = null;
 
+    // Approval mechanism
+    private pendingApprovalResolve: ((allowed: boolean) => void) | null = null;
+    private isWaitingForApproval: boolean = false;
+
     constructor() { }
 
     setEventCallback(callback: AgentEventCallback): void {
         this.eventCallback = callback;
+    }
+
+    approveRequest(): void {
+        if (this.pendingApprovalResolve) {
+            this.pendingApprovalResolve(true);
+            this.pendingApprovalResolve = null;
+            this.isWaitingForApproval = false;
+        }
+    }
+
+    rejectRequest(): void {
+        if (this.pendingApprovalResolve) {
+            this.pendingApprovalResolve(false);
+            this.pendingApprovalResolve = null;
+            this.isWaitingForApproval = false;
+        }
     }
 
     private emitStep(step: AgentStep): void {
@@ -186,12 +206,13 @@ export class AgentProvider {
                     });
                 } else {
                     // No tool call - this is the final response
-                    finalResponse = response;
-                    this.conversationHistory.push({ role: 'assistant', content: response });
+                    // Clean up any raw tool markers the model might include
+                    finalResponse = this.cleanFinalResponse(response);
+                    this.conversationHistory.push({ role: 'assistant', content: finalResponse });
 
                     this.emitStep({
                         type: 'response',
-                        content: response,
+                        content: finalResponse,
                         timestamp: new Date(),
                     });
                     break;
@@ -287,6 +308,35 @@ START NOW - analyze the request and use the appropriate tool.`;
         }
     }
 
+    private cleanFinalResponse(response: string): string {
+        // Remove raw tool markers that some models include in their final response
+        let cleaned = response;
+
+        // Remove **TOOL_CALL** / **TOOL_RESULT** blocks
+        cleaned = cleaned.replace(/\*\*TOOL_CALL:?\s*\w*\*\*[\s\S]*?(?=\n\n|\*\*|$)/gi, '');
+        cleaned = cleaned.replace(/\*\*TOOL_RESULT\*\*[\s\S]*?(?=\n\n|\*\*|$)/gi, '');
+
+        // Remove ```tool blocks
+        cleaned = cleaned.replace(/```tool[\s\S]*?```/g, '');
+
+        // Remove [TOOL_CALL] / [TOOL_RESULT] markers
+        cleaned = cleaned.replace(/\[TOOL_CALL:?\s*\w*\][\s\S]*?(?=\n\n|\[|$)/gi, '');
+        cleaned = cleaned.replace(/\[TOOL_RESULT\][\s\S]*?(?=\n\n|\[|$)/gi, '');
+
+        // Remove </start_of_turn> and similar model artifacts
+        cleaned = cleaned.replace(/<\/?\w+_of_\w+>/g, '');
+
+        // Clean up extra whitespace
+        cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+
+        // If everything was stripped, provide a default message
+        if (!cleaned || cleaned.length < 5) {
+            cleaned = '✅ Done!';
+        }
+
+        return cleaned;
+    }
+
     private parseToolCall(response: string): ToolCall | null {
         // Try multiple formats since different models output differently
 
@@ -358,6 +408,27 @@ START NOW - analyze the request and use the appropriate tool.`;
     }
 
     private async executeTool(toolCall: ToolCall, workspaceFolder: string): Promise<ToolResult> {
+        // Sensitive tools require approval
+        if (toolCall.name === 'runCommand' || toolCall.name === 'writeFile') {
+            this.isWaitingForApproval = true;
+            this.emitStep({
+                type: 'approval_requested',
+                content: `Requesting approval to use ${toolCall.name}`,
+                toolName: toolCall.name,
+                toolParams: toolCall.parameters,
+                timestamp: new Date()
+            });
+
+            // Wait for approval
+            const allowed = await new Promise<boolean>((resolve) => {
+                this.pendingApprovalResolve = resolve;
+            });
+
+            if (!allowed) {
+                return { success: false, output: '', error: 'User denied the action.' };
+            }
+        }
+
         switch (toolCall.name) {
             case 'runCommand':
                 return this.executeRunCommand(toolCall.parameters.command, workspaceFolder);
