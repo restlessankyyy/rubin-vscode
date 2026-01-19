@@ -2,7 +2,7 @@
   "name": "rubin",
   "displayName": "Rubin",
   "description": "AI-powered code completions using local LLMs through Ollama",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "local-dev",
   "engines": {
     "vscode": "^1.80.0"
@@ -103,6 +103,10 @@
       {
         "command": "rubin.askAboutCode",
         "title": "Rubin: Ask About Selected Code"
+      },
+      {
+        "command": "rubin.startAgent",
+        "title": "Rubin: Start Agent Mode"
       }
     ],
     "menus": {
@@ -125,6 +129,11 @@
         "key": "ctrl+shift+a",
         "mac": "cmd+shift+a",
         "when": "editorHasSelection"
+      },
+      {
+        "command": "rubin.startAgent",
+        "key": "ctrl+shift+g",
+        "mac": "cmd+shift+g"
       }
     ]
   },
