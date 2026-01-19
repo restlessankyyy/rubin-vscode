@@ -569,70 +569,6 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
         </div>
     </div>
     <!-- ... rest of HTML ... -->
-    <script>
-        // ... existing script ...
-
-        function approveAction(id) {
-            vscode.postMessage({ type: 'approveAction' });
-            markProcessed(id, true);
-        }
-
-        function denyAction(id) {
-            vscode.postMessage({ type: 'denyAction' });
-            markProcessed(id, false);
-        }
-
-        function markProcessed(id, approved) {
-            const el = document.getElementById(id);
-            if (el) {
-                el.classList.add(approved ? 'approved' : 'denied');
-                const actions = el.querySelector('.approval-actions');
-                actions.innerHTML = approved ? '✅ Approved' : '❌ Denied';
-            }
-        }
-
-        function addApprovalRequest(step) {
-            welcome.style.display = 'none';
-            const div = document.createElement('div');
-            const id = 'approval-' + Date.now();
-            div.id = id;
-            div.className = 'approval-dialog message';
-            
-            let details = '';
-            if (step.toolName === 'runCommand') {
-                details = step.toolParams.command;
-            } else if (step.toolName === 'writeFile') {
-                details = \`File: \${step.toolParams.filePath}\\n\\n\${step.toolParams.content.substring(0, 100)}\${step.toolParams.content.length > 100 ? '...' : ''}\`;
-            }
-
-            div.innerHTML = \`
-                <h4>⚠️ Approval Required: \${step.toolName}</h4>
-                <div class="approval-code">\${escapeHtml(details)}</div>
-                <div class="approval-actions">
-                    <button class="btn btn-secondary" onclick="denyAction('\${id}')">Deny</button>
-                    <button class="btn btn-primary" onclick="approveAction('\${id}')">Allow</button>
-                </div>
-            \`;
-            
-            messages.insertBefore(div, typing);
-            messages.scrollTop = messages.scrollHeight;
-        }
-
-        // Update handlers
-        window.addEventListener('message', (e) => {
-            const data = e.data;
-            switch (data.type) {
-                case 'agentStep':
-                    if (data.step.type === 'approval_requested') {
-                        addApprovalRequest(data.step);
-                    } else if (data.step.type !== 'response') {
-                        addAgentStep(data.step);
-                    }
-                    break;
-                // ... rest of handlers ...
-            }
-        });
-
     <div class="messages" id="messages">
         <div class="welcome" id="welcome">
             <h2>Hey there! 👋</h2>
@@ -680,6 +616,52 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
         const welcome = document.getElementById('welcome');
         const agentStatus = document.getElementById('agentStatus');
         const attachedFiles = document.getElementById('attachedFiles');
+
+        function approveAction(id) {
+            vscode.postMessage({ type: 'approveAction' });
+            markProcessed(id, true);
+        }
+
+        function denyAction(id) {
+            vscode.postMessage({ type: 'denyAction' });
+            markProcessed(id, false);
+        }
+
+        function markProcessed(id, approved) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.add(approved ? 'approved' : 'denied');
+                const actions = el.querySelector('.approval-actions');
+                actions.innerHTML = approved ? '✅ Approved' : '❌ Denied';
+            }
+        }
+
+        function addApprovalRequest(step) {
+            welcome.style.display = 'none';
+            const div = document.createElement('div');
+            const id = 'approval-' + Date.now();
+            div.id = id;
+            div.className = 'approval-dialog message';
+            
+            let details = '';
+            if (step.toolName === 'runCommand') {
+                details = step.toolParams.command;
+            } else if (step.toolName === 'writeFile') {
+                details = \`File: \${step.toolParams.filePath}\\n\\n\${step.toolParams.content.substring(0, 100)}\${step.toolParams.content.length > 100 ? '...' : ''}\`;
+            }
+
+            div.innerHTML = \`
+                <h4>⚠️ Approval Required: \${step.toolName}</h4>
+                <div class="approval-code">\${escapeHtml(details)}</div>
+                <div class="approval-actions">
+                    <button class="btn btn-secondary" onclick="denyAction('\${id}')">Deny</button>
+                    <button class="btn btn-primary" onclick="approveAction('\${id}')">Allow</button>
+                </div>
+            \`;
+            
+            messages.insertBefore(div, typing);
+            messages.scrollTop = messages.scrollHeight;
+        }
         
         let isWaiting = false;
         let currentMode = 'chat';
@@ -813,7 +795,11 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
                     sendBtn.disabled = data.isTyping;
                     break;
                 case 'agentStep':
-                    if (data.step.type !== 'response') addAgentStep(data.step);
+                    if (data.step.type === 'approval_requested') {
+                        addApprovalRequest(data.step);
+                    } else if (data.step.type !== 'response') {
+                        addAgentStep(data.step);
+                    }
                     break;
                 case 'agentStarted':
                     isWaiting = true;
