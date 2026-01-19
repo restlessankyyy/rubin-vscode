@@ -257,10 +257,11 @@ To create a file:
 {"name": "writeFile", "parameters": {"filePath": "hello.ts", "content": "export const hello = () => 'Hello World';"}}
 \`\`\`
 
-To run a command:
+To run a command (executes in workspace root):
 \`\`\`tool
-{"name": "runCommand", "parameters": {"command": "ls -la"}}
+{"name": "runCommand", "parameters": {"command": "npm install"}}
 \`\`\`
+(NEVER use 'cd'. You are already in the workspace root.)
 
 To read a file:
 \`\`\`tool
