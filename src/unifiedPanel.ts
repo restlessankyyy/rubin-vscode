@@ -218,16 +218,16 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
 
         let prompt = systemPrompt + '\n\n';
 
+        if (context) {
+            prompt += context + '\n\n';
+        }
+
         for (const msg of this._conversationHistory.slice(-6)) {
             if (msg.role === 'user') {
                 prompt += `User: ${msg.content}\n\n`;
             } else {
                 prompt += `Assistant: ${msg.content}\n\n`;
             }
-        }
-
-        if (context) {
-            prompt += context + '\n\n';
         }
 
         prompt += `User: ${message}\n\nAssistant:`;
