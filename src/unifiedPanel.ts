@@ -64,6 +64,12 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
                     getAgentProvider().stop();
                     this._postMessage({ type: 'agentStopped' });
                     break;
+                case 'approveAction':
+                    getAgentProvider().approveRequest();
+                    break;
+                case 'denyAction':
+                    getAgentProvider().rejectRequest();
+                    break;
             }
         });
 
@@ -336,34 +342,25 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
         }
         .message-content pre code { background: none; padding: 0; }
         
-        /* Agent Steps */
+        /* Agent Steps - Subtle inline display */
         .agent-step {
-            padding: 8px 10px;
-            margin-bottom: 8px;
-            border-radius: 6px;
-            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            margin: 2px 4px 2px 0;
+            border-radius: 12px;
+            font-size: 11px;
+            background: var(--vscode-badge-background);
+            color: var(--vscode-badge-foreground);
         }
-        .step-thinking {
-            background: var(--vscode-inputValidation-infoBackground);
-            border-left: 3px solid var(--vscode-inputValidation-infoBorder);
-        }
-        .step-tool_call {
-            background: var(--vscode-inputValidation-warningBackground);
-            border-left: 3px solid var(--vscode-inputValidation-warningBorder);
-        }
-        .step-tool_result {
-            background: var(--vscode-input-background);
-            border-left: 3px solid var(--vscode-charts-green);
-        }
-        .step-tool_result.error { border-left-color: var(--vscode-errorForeground); }
-        .step-header {
-            font-size: 10px;
-            font-weight: 600;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-            opacity: 0.8;
-        }
-        .step-content { white-space: pre-wrap; font-size: 11px; }
+        .step-thinking { opacity: 0.7; }
+        .step-tool_call { background: var(--vscode-inputValidation-warningBackground); }
+        .step-tool_result { background: var(--vscode-charts-green); color: white; }
+        .step-tool_result.error { background: var(--vscode-errorForeground); }
+        .step-header { font-size: 11px; }
+        .step-content { display: none; } /* Hide verbose content by default */
+        .agent-steps-container { margin-bottom: 8px; }
         
         /* Typing indicator */
         .typing {
@@ -528,6 +525,34 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
             cursor: pointer;
             font-size: 10px;
         }
+        /* Approval Dialog */
+        .approval-dialog {
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            padding: 10px;
+            margin: 8px 0;
+            border-left: 3px solid var(--vscode-charts-yellow);
+        }
+        .approval-dialog h4 { margin: 0 0 8px 0; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+        .approval-code { 
+            background: var(--vscode-textCodeBlock-background);
+            padding: 8px;
+            border-radius: 4px;
+            font-family: var(--vscode-editor-font-family);
+            font-size: 11px;
+            margin-bottom: 8px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .approval-actions { display: flex; gap: 8px; justify-content: flex-end; }
+        .btn { padding: 4px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; }
+        .btn-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+        .btn-primary:hover { background: var(--vscode-button-hoverBackground); }
+        .btn-secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+        .btn-secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+        .approved { border-left-color: var(--vscode-charts-green); opacity: 0.7; }
+        .denied { border-left-color: var(--vscode-errorForeground); opacity: 0.7; }
     </style>
 </head>
 <body>
@@ -537,6 +562,70 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
             <button class="icon-btn" onclick="clearChat()" title="Clear chat">🗑️</button>
         </div>
     </div>
+    <!-- ... rest of HTML ... -->
+    <script>
+        // ... existing script ...
+
+        function approveAction(id) {
+            vscode.postMessage({ type: 'approveAction' });
+            markProcessed(id, true);
+        }
+
+        function denyAction(id) {
+            vscode.postMessage({ type: 'denyAction' });
+            markProcessed(id, false);
+        }
+
+        function markProcessed(id, approved) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.add(approved ? 'approved' : 'denied');
+                const actions = el.querySelector('.approval-actions');
+                actions.innerHTML = approved ? '✅ Approved' : '❌ Denied';
+            }
+        }
+
+        function addApprovalRequest(step) {
+            welcome.style.display = 'none';
+            const div = document.createElement('div');
+            const id = 'approval-' + Date.now();
+            div.id = id;
+            div.className = 'approval-dialog message';
+            
+            let details = '';
+            if (step.toolName === 'runCommand') {
+                details = step.toolParams.command;
+            } else if (step.toolName === 'writeFile') {
+                details = \`File: \${step.toolParams.filePath}\\n\\n\${step.toolParams.content.substring(0, 100)}\${step.toolParams.content.length > 100 ? '...' : ''}\`;
+            }
+
+            div.innerHTML = \`
+                <h4>⚠️ Approval Required: \${step.toolName}</h4>
+                <div class="approval-code">\${escapeHtml(details)}</div>
+                <div class="approval-actions">
+                    <button class="btn btn-secondary" onclick="denyAction('\${id}')">Deny</button>
+                    <button class="btn btn-primary" onclick="approveAction('\${id}')">Allow</button>
+                </div>
+            \`;
+            
+            messages.insertBefore(div, typing);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        // Update handlers
+        window.addEventListener('message', (e) => {
+            const data = e.data;
+            switch (data.type) {
+                case 'agentStep':
+                    if (data.step.type === 'approval_requested') {
+                        addApprovalRequest(data.step);
+                    } else if (data.step.type !== 'response') {
+                        addAgentStep(data.step);
+                    }
+                    break;
+                // ... rest of handlers ...
+            }
+        });
 
     <div class="messages" id="messages">
         <div class="welcome" id="welcome">
@@ -652,31 +741,33 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
         }
 
         function addAgentStep(step) {
+            // Skip thinking steps for cleaner UI
+            if (step.type === 'thinking') return;
+            
             welcome.style.display = 'none';
-            const div = document.createElement('div');
-            let className = 'agent-step step-' + step.type;
+            
+            // Get or create steps container
+            let container = messages.querySelector('.agent-steps-container:last-of-type');
+            if (!container || container.nextElementSibling !== typing) {
+                container = document.createElement('div');
+                container.className = 'agent-steps-container';
+                messages.insertBefore(container, typing);
+            }
+            
+            const chip = document.createElement('span');
+            chip.className = 'agent-step step-' + step.type;
             if (step.type === 'tool_result' && step.result && !step.result.success) {
-                className += ' error';
-            }
-            div.className = className;
-            
-            const icons = { thinking: '🧠', tool_call: '🔧', tool_result: step.result?.success ? '✅' : '❌' };
-            const labels = { 
-                thinking: 'Thinking', 
-                tool_call: step.toolName || 'Tool Call',
-                tool_result: step.toolName || 'Result'
-            };
-            
-            let content = step.content;
-            if (step.type === 'tool_call' && step.toolParams) {
-                content = JSON.stringify(step.toolParams, null, 2);
-            } else if (step.type === 'tool_result' && step.result) {
-                content = step.result.success ? step.result.output : step.result.error;
+                chip.classList.add('error');
             }
             
-            div.innerHTML = '<div class="step-header">' + (icons[step.type] || '') + ' ' + labels[step.type] + '</div>' +
-                '<div class="step-content">' + escapeHtml(content || '') + '</div>';
-            messages.insertBefore(div, typing);
+            const icon = step.type === 'tool_call' ? '🔧' : (step.result?.success ? '✅' : '❌');
+            const label = step.toolName || 'action';
+            chip.innerHTML = icon + ' ' + label;
+            chip.title = step.type === 'tool_call' 
+                ? JSON.stringify(step.toolParams, null, 2)
+                : (step.result?.output || step.result?.error || '');
+            
+            container.appendChild(chip);
             messages.scrollTop = messages.scrollHeight;
         }
 
