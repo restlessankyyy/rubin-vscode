@@ -47,9 +47,13 @@ export class ContextManager {
         const problems: string[] = [];
 
         for (const [uri, diags] of diagnostics) {
-            if (diags.length === 0) continue;
+            if (diags.length === 0) {
+                continue;
+            }
             // Only care about file-schema URIs
-            if (uri.scheme !== 'file') continue;
+            if (uri.scheme !== 'file') {
+                continue;
+            }
 
             const relativePath = vscode.workspace.asRelativePath(uri);
             const severityCount = { error: 0, warning: 0 };
@@ -57,8 +61,12 @@ export class ContextManager {
             const fileProblems = diags.map(d => {
                 const line = d.range.start.line + 1;
                 const severity = d.severity === vscode.DiagnosticSeverity.Error ? 'Error' : 'Warning';
-                if (severity === 'Error') severityCount.error++;
-                if (severity === 'Warning') severityCount.warning++;
+                if (severity === 'Error') {
+                    severityCount.error++;
+                }
+                if (severity === 'Warning') {
+                    severityCount.warning++;
+                }
                 return `  - [Line ${line}] ${severity}: ${d.message}`;
             });
 
@@ -81,7 +89,9 @@ export class ContextManager {
         // at visibleTextEditors or just rely on the user to 'open' relevant files.
         // For now, we'll iterate visible editors that aren't the active one.
         for (const editor of vscode.window.visibleTextEditors) {
-            if (editor === activeEditor) continue;
+            if (editor === activeEditor) {
+                continue;
+            }
 
             const fileName = path.basename(editor.document.fileName);
             items.push({
@@ -97,7 +107,9 @@ export class ContextManager {
     }
 
     formatContextForPrompt(items: ContextItem[]): string {
-        if (items.length === 0) return '';
+        if (items.length === 0) {
+            return '';
+        }
 
         let contextString = '\n\n## Context Information\n';
 

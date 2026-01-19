@@ -4,6 +4,9 @@ import { getConfig, setModel } from './config';
 import { getOllamaClient } from './ollamaClient';
 import { getAgentProvider, AgentStep } from './agentProvider';
 import { ContextManager } from './contextManager';
+import { parseSlashCommand, buildCommandContext } from './slashCommands';
+import { processMessage } from './participants';
+import { CHAT_SYSTEM_PROMPT, generateFollowUpSuggestions } from './prompts';
 
 export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'rubin.unifiedView';
@@ -130,6 +133,31 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
     }
 
     private async _handleChatMessage(message: string) {
+        // Check for slash commands
+        const { command, args } = parseSlashCommand(message);
+        
+        let processedMessage = message;
+        let slashCommandContext = '';
+        
+        if (command) {
+            // Handle /help specially - just return the help text
+            if (command.name === 'help') {
+                const helpText = await command.handler(args, await buildCommandContext());
+                this._postMessage({ type: 'userMessage', content: message });
+                this._postMessage({ type: 'assistantMessage', content: helpText });
+                return;
+            }
+            
+            // Build context and execute the slash command to get the prompt
+            const context = await buildCommandContext();
+            slashCommandContext = await command.handler(args, context);
+        }
+
+        // Process @mentions to gather additional context
+        const mentionResult = await processMessage(message);
+        const mentionContext = mentionResult.contextBlocks.join('\n\n');
+        processedMessage = slashCommandContext || mentionResult.cleanMessage;
+
         // Add user message to history
         this._conversationHistory.push({ role: 'user', content: message });
         this._postMessage({ type: 'userMessage', content: message });
@@ -143,33 +171,76 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
             const contextItems = await this._contextManager.getContext();
             let context = this._contextManager.formatContextForPrompt(contextItems);
 
-            // 2. Add manually attached files (if they aren't already covered)
-            // Note: ContextManager picks up active/open files, but if user explicitly
-            // pinned a file that is now closed, we should still include it.
-            // For simplicity, we append attached files if not present.
+            // 2. Add @mention context
+            if (mentionContext) {
+                context = mentionContext + '\n\n' + context;
+            }
+
+            // 3. Add manually attached files (if they aren't already covered)
             for (const file of this._attachedFiles) {
                 if (!context.includes(`Filename: ${file.name}`)) {
                     context += `\n\n### Attached File: ${file.name}\n\`\`\`${file.language}\n${file.content}\n\`\`\``;
                 }
             }
 
-            const prompt = this._buildChatPrompt(message, context);
-            const response = await client.generateChat(prompt, config);
+            // Use streaming for real-time response
+            const prompt = this._buildChatPrompt(processedMessage, context);
+            const hasCodeContext = context.includes('```') || message.includes('code');
+            
+            // Create a message placeholder for streaming
+            this._postMessage({ type: 'streamStart' });
 
-            if (response) {
-                this._conversationHistory.push({ role: 'assistant', content: response });
-                this._postMessage({ type: 'assistantMessage', content: response });
-            } else {
+            await client.generateChatStream(
+                prompt,
+                config,
+                {
+                    onToken: (token) => {
+                        this._postMessage({ type: 'streamToken', token });
+                    },
+                    onComplete: (response) => {
+                        this._conversationHistory.push({ role: 'assistant', content: response });
+                        this._postMessage({ type: 'streamEnd' });
+                        
+                        // Generate follow-up suggestions
+                        const followUps = generateFollowUpSuggestions(message, response, hasCodeContext);
+                        if (followUps.length > 0) {
+                            this._postMessage({ type: 'followUpSuggestions', suggestions: followUps });
+                        }
+                    },
+                    onError: (error) => {
+                        this._postMessage({
+                            type: 'error',
+                            content: `Streaming error: ${error.message}`
+                        });
+                    }
+                }
+            );
+
+        } catch (error) {
+            // Fall back to non-streaming if streaming fails
+            try {
+                const config = getConfig();
+                const client = getOllamaClient(config.serverUrl);
+                const contextItems = await this._contextManager.getContext();
+                const context = this._contextManager.formatContextForPrompt(contextItems);
+                const prompt = this._buildChatPrompt(processedMessage, context);
+                
+                const response = await client.generateChat(prompt, config);
+                if (response) {
+                    this._conversationHistory.push({ role: 'assistant', content: response });
+                    this._postMessage({ type: 'assistantMessage', content: response });
+                } else {
+                    this._postMessage({
+                        type: 'error',
+                        content: 'Failed to get response. Check if Ollama is running.'
+                    });
+                }
+            } catch (fallbackError) {
                 this._postMessage({
                     type: 'error',
-                    content: 'Failed to get response. Check if Ollama is running.'
+                    content: `Error: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`
                 });
             }
-        } catch (error) {
-            this._postMessage({
-                type: 'error',
-                content: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
-            });
         } finally {
             this._postMessage({ type: 'typing', isTyping: false });
         }
@@ -214,13 +285,14 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
     }
 
     private _buildChatPrompt(message: string, context: string): string {
-        const systemPrompt = `You are Rubin, a helpful AI coding assistant. You help developers write, understand, and debug code. Be concise but thorough. Format code blocks with proper markdown syntax.`;
-
-        let prompt = systemPrompt + '\n\n';
+        let prompt = CHAT_SYSTEM_PROMPT + '\n\n';
 
         if (context) {
-            prompt += context + '\n\n';
+            prompt += '## Current Context\n\n' + context + '\n\n';
         }
+
+        // Add conversation history for continuity
+        prompt += '## Conversation\n\n';
 
         for (const msg of this._conversationHistory.slice(-6)) {
             if (msg.role === 'user') {
@@ -248,6 +320,18 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
         });
     }
 
+    /**
+     * Send a message to the chat programmatically (used by code actions)
+     */
+    public sendMessageToChat(message: string) {
+        // Focus the view first
+        vscode.commands.executeCommand('rubin.unifiedView.focus');
+        // Then send the message
+        this._postMessage({
+            type: 'injectMessage',
+            message: message
+        });
+    }
     private _getHtmlForWebview(): string {
         return `<!DOCTYPE html>
 <html lang="en">
@@ -501,6 +585,43 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
             font-size: 12px;
         }
         
+        /* Streaming indicator */
+        .message.streaming .message-content::after {
+            content: '▊';
+            animation: blink 1s infinite;
+            color: var(--vscode-textLink-foreground);
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+        
+        /* Follow-up suggestions */
+        .follow-ups {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 8px 0 16px 0;
+            padding-left: 12px;
+        }
+        .follow-up-btn {
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            border: 1px solid var(--vscode-button-border, transparent);
+            border-radius: 14px;
+            padding: 4px 12px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .follow-up-btn:hover {
+            background: var(--vscode-button-secondaryHoverBackground);
+            transform: translateY(-1px);
+        }
+        
+        /* @mention highlighting in input */
+        .mention { 
+            color: var(--vscode-textLink-foreground);
+            font-weight: 600;
+        }
+        
         /* Agent status */
         .agent-status {
             display: none;
@@ -726,6 +847,54 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
                 '<div class="message-content">' + formatContent(content) + '</div>';
             messages.insertBefore(div, typing);
             messages.scrollTop = messages.scrollHeight;
+            return div;
+        }
+
+        // Streaming support
+        let streamingDiv = null;
+        let streamingContent = '';
+
+        function startStreaming() {
+            welcome.style.display = 'none';
+            streamingContent = '';
+            streamingDiv = document.createElement('div');
+            streamingDiv.className = 'message assistant-message streaming';
+            streamingDiv.innerHTML = '<div class="message-header">Rubin</div>' +
+                '<div class="message-content"></div>';
+            messages.insertBefore(streamingDiv, typing);
+        }
+
+        function appendStreamToken(token) {
+            if (!streamingDiv) startStreaming();
+            streamingContent += token;
+            const contentDiv = streamingDiv.querySelector('.message-content');
+            contentDiv.innerHTML = formatContent(streamingContent);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function endStreaming() {
+            if (streamingDiv) {
+                streamingDiv.classList.remove('streaming');
+                const contentDiv = streamingDiv.querySelector('.message-content');
+                contentDiv.innerHTML = formatContent(streamingContent);
+            }
+            streamingDiv = null;
+            streamingContent = '';
+        }
+
+        function addFollowUpSuggestions(suggestions) {
+            const container = document.createElement('div');
+            container.className = 'follow-ups';
+            container.innerHTML = suggestions.map(s => 
+                '<button class="follow-up-btn" onclick="useFollowUp(\\x27' + escapeHtml(s).replace(/'/g, "\\\\'") + '\\x27)">' + escapeHtml(s) + '</button>'
+            ).join('');
+            messages.insertBefore(container, typing);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function useFollowUp(text) {
+            input.value = text;
+            send();
         }
 
         function addAgentStep(step) {
@@ -776,7 +945,7 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
         function updateFiles(files) {
             attachedFiles.innerHTML = files.map(name => 
                 '<div class="file-chip">📄 ' + name + 
-                '<button onclick="removeFile(\\\'' + name + '\\')"">×</button></div>'
+                '<button onclick="removeFile(\\x27' + name + '\\x27)">×</button></div>'
             ).join('');
         }
 
@@ -834,6 +1003,22 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
                 case 'addCode':
                     input.value = 'Regarding this code:\\n\`\`\`' + data.language + '\\n' + data.code + '\\n\`\`\`\\n\\n';
                     input.focus();
+                    break;
+                case 'injectMessage':
+                    input.value = data.message;
+                    send();
+                    break;
+                case 'streamStart':
+                    startStreaming();
+                    break;
+                case 'streamToken':
+                    appendStreamToken(data.token);
+                    break;
+                case 'streamEnd':
+                    endStreaming();
+                    break;
+                case 'followUpSuggestions':
+                    addFollowUpSuggestions(data.suggestions);
                     break;
             }
         });

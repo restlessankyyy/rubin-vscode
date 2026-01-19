@@ -1,148 +1,325 @@
 # Rubin 🤖
 
-A VS Code extension that provides AI-powered code completions, chat, and **autonomous agent mode** using local LLMs through Ollama. Like GitHub Copilot, but 100% local and private!
+<p align="center">
+  <img src="https://img.shields.io/badge/Ollama-Powered-blue?style=for-the-badge" alt="Ollama Powered"/>
+  <img src="https://img.shields.io/badge/VS%20Code-Extension-007ACC?style=for-the-badge" alt="VS Code Extension"/>
+  <img src="https://img.shields.io/badge/100%25-Private-green?style=for-the-badge" alt="100% Private"/>
+  <img src="https://img.shields.io/badge/v0.6.0-Latest-orange?style=for-the-badge" alt="v0.6.0"/>
+</p>
 
-![Rubin Demo](https://img.shields.io/badge/Ollama-Powered-blue) ![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC)
+<p align="center">
+  <strong>Your AI coding assistant that runs entirely on your machine.</strong>
+  <br>
+  Streaming Chat • 12 Slash Commands • Autonomous Agent • @Mentions • Smart Context
+</p>
+
+---
+
+## 🔥 Why Rubin?
+
+- **🔒 100% Private** - Your code never leaves your machine
+- **⚡ Fast** - Local inference with no network latency
+- **💰 Free** - No subscriptions, no API costs
+- **🌐 Offline** - Works without internet
+- **🎯 Powerful** - Agent mode can execute multi-step tasks autonomously
+
+---
 
 ## ✨ Features
 
-- 🔌 **Inline Code Completions** - Ghost text suggestions as you type
-- 💬 **Chat Sidebar** - Ask questions, explain code, get help
-- 🤖 **Agent Mode** - Autonomous AI that can run commands, read/write files, and complete multi-step tasks
-- 🎯 **Model Selector** - Switch between models directly in chat
-- 🏠 **100% Local** - All inference happens on your machine
-- ⚙️ **Configurable** - Choose your model, adjust parameters
-- 📊 **Status Bar** - See connection status and current model
+### 💬 Streaming Chat with @Mentions
 
-## 📋 Prerequisites
+Real-time streaming responses. Use @mentions to include specific context:
 
-1. **Install Ollama**
-   ```bash
-   brew install ollama
-   ```
+| Mention | Description |
+|---------|-------------|
+| `@workspace` | Include workspace structure and summary |
+| `@file:path/to/file.ts` | Include specific file contents |
+| `@terminal` | Include terminal information |
+| `@git` | Include git status, branch, and diffs |
+| `@selection` | Include current editor selection |
+| `@problems` | Include workspace diagnostics |
+| `@symbols` | Include symbols from current file |
+| `@docs` | Search documentation files |
 
-2. **Start Ollama server**
-   ```bash
-   ollama serve
-   ```
+**Example:** "How do I use the function in @file:utils.ts with @selection?"
 
-3. **Pull a code model**
-   ```bash
-   ollama pull deepseek-coder:6.7b  # Recommended for code
-   # or
-   ollama pull codellama            # Great for completions
-   # or
-   ollama pull gemma:2b             # Lightweight option
-   ```
+### ⌨️ Slash Commands
 
-## 🚀 Installation
+Type `/` to access 12 powerful commands:
 
-### From VSIX
-1. Download the latest `.vsix` from releases
-2. In VS Code: `Cmd+Shift+P` → "Install from VSIX"
-3. Select the downloaded file
-4. Reload VS Code
+| Command | Description |
+|---------|-------------|
+| `/explain` | Explain selected code in detail |
+| `/fix` | Find and fix bugs in code |
+| `/tests` | Generate unit tests |
+| `/doc` | Add documentation comments |
+| `/optimize` | Improve performance |
+| `/refactor` | Improve code structure |
+| `/review` | Code review with suggestions |
+| `/simplify` | Reduce code complexity |
+| `/convert` | Convert to another language |
+| `/commit` | Generate git commit message |
+| `/terminal` | Generate terminal commands |
+| `/help` | Show all available commands |
 
-### Development Mode
+### 🤖 Autonomous Agent Mode
+
+The most powerful feature! Switch to Agent mode for multi-step tasks with 14 tools:
+
+**File Operations:**
+- `readFile` - Read file contents
+- `writeFile` - Create/overwrite files
+- `editFile` - Edit specific line ranges
+- `insertCode` - Insert code at specific lines
+- `deleteFile` - Delete files or directories
+- `createDirectory` - Create directories
+
+**Search & Analysis:**
+- `searchFiles` - Find files by glob pattern
+- `searchCode` - Search text across workspace
+- `getSymbols` - Get symbols in a file
+- `findReferences` - Find all references to a symbol
+- `listDirectory` - List directory contents
+
+**Git Integration:**
+- `getGitStatus` - Get modified/staged files
+- `gitDiff` - Get file diffs
+
+**Command Execution:**
+- `runCommand` - Execute terminal commands
+
+All sensitive operations require user approval for safety!
+
+### 🖱️ Code Actions (Right-Click Menu)
+
+Select code → Right-click → "Rubin" submenu:
+- **Explain with Rubin** - Get explanation
+- **Fix with Rubin** - Fix bugs
+- **Generate Tests** - Create unit tests
+- **Add Documentation** - Add comments
+- **Optimize Code** - Improve performance
+- **Refactor Code** - Improve structure
+
+### ✏️ Inline Edit
+
+1. Select code
+2. Press `Cmd+Shift+I` (Mac) or `Ctrl+Shift+I` (Windows/Linux)
+3. Describe changes → AI replaces selection
+
+### 🔌 Inline Completions
+
+Ghost text suggestions appear as you type. Press `Tab` to accept.
+
+Supports Fill-in-the-Middle (FIM) for:
+- CodeLlama
+- DeepSeek Coder
+- Qwen Coder
+- StarCoder
+
+### 💡 Smart Context
+
+Rubin automatically gathers relevant context:
+- Current file and cursor position
+- Imported/related files
+- Recently edited files
+- Workspace structure
+- Diagnostics and problems
+
+### 📝 Follow-Up Suggestions
+
+After each response, Rubin suggests helpful next actions like:
+- "Generate tests for this"
+- "Add error handling"
+- "Show usage example"
+
+---
+
+## 🚀 Quick Start
+
+### 1. Install Ollama
+
 ```bash
-git clone https://github.com/restlessankyyy/rubin-vscode.git
-cd rubin-vscode
-npm install
-npm run compile
-# Press F5 to launch Extension Development Host
+# macOS
+brew install ollama
+
+# Linux  
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Windows - Download from https://ollama.ai/download
 ```
 
-### Build VSIX
+### 2. Start Ollama & Pull a Model
+
 ```bash
-npm install -g @vscode/vsce
-vsce package --allow-missing-repository
+ollama serve
+
+# In another terminal - pick your model:
+ollama pull qwen2.5-coder:7b    # Fast & capable (recommended)
+ollama pull deepseek-coder:6.7b # Best quality
+ollama pull codellama:7b        # Good for completions
 ```
 
-## 💡 Usage
+### 3. Install Rubin
 
-### Inline Completions
-1. Start typing code in any file
-2. Wait for ghost text suggestions to appear
-3. Press `Tab` to accept the suggestion
-4. Press `Escape` to dismiss
+1. Open VS Code
+2. `Cmd+Shift+X` → Search "Rubin"
+3. Click Install
+4. Open the Rubin sidebar (🤖 icon)
 
-### Chat
-1. Press `Cmd+Shift+R` to open Rubin Chat
-2. Or click the 🤖 icon in the activity bar
-3. Ask questions about your code
-4. Select code and right-click → "Rubin: Ask About Selected Code"
+---
 
-### Agent Mode
-1. Press `Cmd+Shift+G` to open Agent Mode
-2. Describe a task (e.g., "Create a hello.ts file with a greeting function")
-3. Watch the agent work step-by-step
-4. Agent can:
-   - Run terminal commands
-   - Read and write files
-   - Search your workspace
-   - Complete multi-step tasks autonomously
+## ⚙️ Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `rubin.serverUrl` | `http://localhost:11434` | Ollama server URL |
+| `rubin.model` | `qwen2.5-coder:7b` | Model for completions/chat |
+| `rubin.enableCompletions` | `true` | Enable inline completions |
+| `rubin.maxTokens` | `256` | Max tokens for completions |
+| `rubin.temperature` | `0.2` | Creativity (0-1) |
+| `rubin.debounceTime` | `300` | Completion delay (ms) |
+
+---
 
 ## ⌨️ Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
 | `Cmd+Shift+R` | Open Rubin Chat |
-| `Cmd+Shift+G` | Open Agent Mode |
-| `Cmd+Shift+A` | Ask about selected code |
-| `Tab` | Accept inline completion |
-| `Escape` | Dismiss suggestion |
+| `Cmd+Shift+I` | Inline Edit Selection |
+| `Tab` | Accept completion |
+| `Escape` | Dismiss completion |
 
-## 🎛️ Commands
+---
 
-- **Rubin: Toggle Enable/Disable** - Turn completions on/off
-- **Rubin: Select Model** - Choose from available Ollama models
-- **Rubin: Check Ollama Connection** - Verify connectivity
-- **Rubin: Open Chat** - Open the chat sidebar
-- **Rubin: Ask About Selected Code** - Chat about selected code
-- **Rubin: Start Agent Mode** - Open autonomous agent panel
+## 🎯 Best Practices
 
-## ⚙️ Configuration
+### For Best Completions
+- Use models with FIM support (CodeLlama, DeepSeek)
+- Keep temperature low (0.1-0.3)
+- Write clear comments describing intent
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `rubin.enabled` | `true` | Enable/disable completions |
-| `rubin.serverUrl` | `http://localhost:11434` | Ollama server URL |
-| `rubin.model` | `codellama` | Model for completions |
-| `rubin.maxTokens` | `150` | Max tokens to generate |
-| `rubin.temperature` | `0.2` | Generation temperature (0-1) |
-| `rubin.debounceMs` | `300` | Debounce delay in ms |
-| `rubin.contextLines` | `50` | Lines of context to include |
+### For Best Chat/Agent Responses
+- Use larger models (7B+)
+- Attach relevant files
+- Use @mentions for specific context
+- Be specific in your requests
 
-## 🔧 Recommended Models
+### Model Recommendations
 
-| Model | Size | Best For |
-|-------|------|----------|
-| `deepseek-coder:6.7b` | 3.8 GB | Code completion & chat |
-| `codellama` | 3.8 GB | Code-focused tasks |
-| `gemma:2b` | 1.7 GB | Fast, lightweight chat |
+| Use Case | Recommended Model |
+|----------|-------------------|
+| Fast completions | `qwen2.5-coder:3b` |
+| Quality completions | `deepseek-coder:6.7b` |
+| General chat | `qwen2.5-coder:7b` |
+| Complex tasks | `deepseek-coder:33b` |
 
-## 🐛 Troubleshooting
+---
 
-**No completions appearing?**
-- Run `Cmd+Shift+P` → "Rubin: Check Ollama Connection"
-- Make sure Ollama is running (`ollama serve`)
-- Check that your model is installed (`ollama list`)
+## 🏗️ Architecture
 
-**Completions are slow?**
-- Try a smaller model (e.g., `gemma:2b`)
-- Reduce `maxTokens` setting
-- Ensure your machine has enough RAM
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      VS Code Extension                       │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
+│  │ Completion   │  │    Chat      │  │      Agent       │  │
+│  │  Provider    │  │   Panel      │  │     Provider     │  │
+│  └──────┬───────┘  └──────┬───────┘  └────────┬─────────┘  │
+│         │                 │                    │            │
+│         └─────────┬───────┴────────────────────┘            │
+│                   │                                          │
+│         ┌─────────▼─────────┐                               │
+│         │   Ollama Client   │ ◄── Streaming Support         │
+│         │  (HTTP Client)    │                               │
+│         └─────────┬─────────┘                               │
+│                   │                                          │
+│  ┌────────────────┼────────────────────────────────────┐   │
+│  │                │       Context Layer                 │   │
+│  │  ┌─────────────▼───────────────┐                    │   │
+│  │  │      Smart Context          │                    │   │
+│  │  │  (Imports, Related Files)   │                    │   │
+│  │  └─────────────────────────────┘                    │   │
+│  │  ┌──────────────┐  ┌───────────────┐               │   │
+│  │  │ Participants │  │ Slash Commands│               │   │
+│  │  │ (@mentions)  │  │ (12 commands) │               │   │
+│  │  └──────────────┘  └───────────────┘               │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                              │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+              ┌─────────────────────────┐
+              │    Ollama Server        │
+              │   (localhost:11434)     │
+              │                         │
+              │  ┌───────────────────┐  │
+              │  │   Local LLM       │  │
+              │  │ (qwen, deepseek,  │  │
+              │  │  codellama, etc.) │  │
+              │  └───────────────────┘  │
+              └─────────────────────────┘
+```
 
-**Chat not responding?**
-- Check the model selector dropdown
-- Refresh models with the 🔄 button
-- Verify Ollama connection
+---
+
+## 📁 Project Structure
+
+```
+rubin/
+├── src/
+│   ├── extension.ts      # Entry point
+│   ├── ollamaClient.ts   # HTTP client with streaming
+│   ├── unifiedPanel.ts   # Chat/Agent webview
+│   ├── agentProvider.ts  # Autonomous agent (14 tools)
+│   ├── completionProvider.ts  # Inline completions
+│   ├── slashCommands.ts  # 12 slash commands
+│   ├── participants.ts   # @mentions system
+│   ├── codeActions.ts    # Right-click menu
+│   ├── inlineChat.ts     # Inline edit
+│   ├── gitIntegration.ts # Commit message generator
+│   ├── smartContext.ts   # Intelligent context selection
+│   ├── prompts.ts        # System prompts
+│   └── config.ts         # Settings management
+├── docs/
+│   └── ARCHITECTURE.md   # Technical documentation
+├── package.json
+└── README.md
+```
+
+---
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run `npm run lint && npm run compile`
+5. Submit a pull request
+
+---
 
 ## 📄 License
 
-MIT
+MIT License - See [LICENSE](LICENSE) for details.
 
-## 🙏 Acknowledgments
+---
 
-- [Ollama](https://ollama.ai/) - Local LLM inference
-- [VS Code Extension API](https://code.visualstudio.com/api) - Extension framework
+## 🙏 Credits
+
+- [Ollama](https://ollama.ai/) - Local LLM runtime
+- [VS Code API](https://code.visualstudio.com/api) - Extension platform
+
+---
+
+<p align="center">
+  <strong>Made with ❤️ for developers who value privacy</strong>
+  <br>
+  <a href="https://github.com/restlessankyyy/rubin-vscode">GitHub</a> •
+  <a href="https://github.com/restlessankyyy/rubin-vscode/issues">Issues</a> •
+  <a href="https://github.com/restlessankyyy/rubin-vscode/releases">Releases</a>
+</p>
