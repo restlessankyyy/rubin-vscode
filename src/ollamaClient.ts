@@ -9,8 +9,28 @@ export interface GenerateRequest {
     options?: {
         num_predict?: number;
         temperature?: number;
+        top_p?: number;
         stop?: string[];
     };
+}
+
+export interface StreamChunk {
+    model: string;
+    created_at: string;
+    response: string;
+    done: boolean;
+    context?: number[];
+    total_duration?: number;
+    load_duration?: number;
+    prompt_eval_count?: number;
+    eval_count?: number;
+    eval_duration?: number;
+}
+
+export interface StreamCallbacks {
+    onToken?: (token: string) => void;
+    onComplete?: (fullResponse: string) => void;
+    onError?: (error: Error) => void;
 }
 
 export interface GenerateResponse {
@@ -137,6 +157,134 @@ export class OllamaClient {
                 return null;
             }
             console.error('Ollama chat error:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Generate a streaming chat response - tokens are delivered in real-time
+     */
+    async generateChatStream(
+        prompt: string,
+        config: LocalCopilotConfig,
+        callbacks: StreamCallbacks,
+        signal?: AbortSignal
+    ): Promise<void> {
+        const request: GenerateRequest = {
+            model: config.model,
+            prompt: prompt,
+            stream: true,
+            options: {
+                num_predict: 2048,
+                temperature: 0.7,
+            },
+        };
+
+        return new Promise((resolve, reject) => {
+            const url = new URL('/api/generate', this.serverUrl);
+            const isHttps = url.protocol === 'https:';
+            const lib = isHttps ? https : http;
+
+            const options: http.RequestOptions = {
+                hostname: url.hostname,
+                port: url.port || (isHttps ? 443 : 80),
+                path: url.pathname,
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                timeout: 120000, // 2 minutes for streaming
+            };
+
+            let fullResponse = '';
+
+            const req = lib.request(options, (res) => {
+                res.setEncoding('utf8');
+                let buffer = '';
+
+                res.on('data', (chunk: string) => {
+                    buffer += chunk;
+                    
+                    // Process complete JSON lines
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+                    for (const line of lines) {
+                        if (!line.trim()) { continue; }
+                        
+                        try {
+                            const data = JSON.parse(line) as StreamChunk;
+                            
+                            if (data.response) {
+                                fullResponse += data.response;
+                                callbacks.onToken?.(data.response);
+                            }
+                            
+                            if (data.done) {
+                                callbacks.onComplete?.(fullResponse);
+                                resolve();
+                            }
+                        } catch (parseError) {
+                            // Ignore parse errors for incomplete chunks
+                        }
+                    }
+                });
+
+                res.on('end', () => {
+                    // Process any remaining buffer
+                    if (buffer.trim()) {
+                        try {
+                            const data = JSON.parse(buffer) as StreamChunk;
+                            if (data.response) {
+                                fullResponse += data.response;
+                                callbacks.onToken?.(data.response);
+                            }
+                        } catch { /* ignore */ }
+                    }
+                    callbacks.onComplete?.(fullResponse);
+                    resolve();
+                });
+            });
+
+            req.on('error', (error) => {
+                callbacks.onError?.(error);
+                reject(error);
+            });
+
+            req.on('timeout', () => {
+                req.destroy();
+                const error = new Error('Request timeout');
+                callbacks.onError?.(error);
+                reject(error);
+            });
+
+            // Handle abort signal
+            if (signal) {
+                signal.addEventListener('abort', () => {
+                    req.destroy();
+                    const abortError = new Error('Request aborted');
+                    abortError.name = 'AbortError';
+                    reject(abortError);
+                });
+            }
+
+            req.write(JSON.stringify(request));
+            req.end();
+        });
+    }
+
+    /**
+     * Generate embeddings for semantic search (if model supports it)
+     */
+    async generateEmbedding(text: string, model: string = 'nomic-embed-text'): Promise<number[] | null> {
+        try {
+            const response = await this.request<{ embedding: number[] }>(
+                '/api/embeddings',
+                'POST',
+                { model, prompt: text }
+            );
+            return response?.embedding || null;
+        } catch {
             return null;
         }
     }

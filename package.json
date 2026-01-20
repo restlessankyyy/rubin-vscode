@@ -1,9 +1,26 @@
 {
   "name": "rubin",
-  "displayName": "Rubin",
-  "description": "AI-powered code completions using local LLMs through Ollama",
-  "version": "0.2.0",
-  "publisher": "local-dev",
+  "displayName": "Rubin - AI Coding Assistant",
+  "description": "Powerful AI coding assistant running 100% locally with Ollama. Features: streaming chat, 12 slash commands, autonomous agent mode, @mentions, MCP server integration, code actions, inline edit, and smart context. Private, fast, free.",
+  "version": "0.7.0",
+  "publisher": "restlessankyyy",
+  "author": {
+    "name": "Ankit Raj"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/restlessankyyy/rubin-vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/restlessankyyy/rubin-vscode/issues"
+  },
+  "homepage": "https://github.com/restlessankyyy/rubin-vscode#readme",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -18,7 +35,15 @@
     "ollama",
     "code completion",
     "llm",
-    "local"
+    "local",
+    "private",
+    "agent",
+    "chat",
+    "codellama",
+    "deepseek",
+    "streaming",
+    "code assistant",
+    "autocomplete"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -38,8 +63,8 @@
       "rubin-chat": [
         {
           "type": "webview",
-          "id": "rubin.chatView",
-          "name": "Chat"
+          "id": "rubin.unifiedView",
+          "name": "Rubin"
         }
       ]
     },
@@ -58,8 +83,8 @@
         },
         "rubin.model": {
           "type": "string",
-          "default": "codellama",
-          "description": "Model to use for completions (e.g., codellama, gemma:7b, deepseek-coder)"
+          "default": "llama3.1:8b",
+          "description": "Model to use for completions (e.g., llama3.1:8b, codellama, qwen2.5-coder:7b)"
         },
         "rubin.maxTokens": {
           "type": "number",
@@ -80,6 +105,39 @@
           "type": "number",
           "default": 50,
           "description": "Number of lines of context to include before cursor"
+        },
+        "rubin.mcpServers": {
+          "type": "array",
+          "default": [],
+          "description": "MCP (Model Context Protocol) servers to connect to",
+          "items": {
+            "type": "object",
+            "required": ["name", "command"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Unique name for this MCP server"
+              },
+              "command": {
+                "type": "string",
+                "description": "Command to start the MCP server"
+              },
+              "args": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Command line arguments"
+              },
+              "env": {
+                "type": "object",
+                "description": "Environment variables to set"
+              },
+              "enabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether this server is enabled"
+              }
+            }
+          }
         }
       }
     },
@@ -107,6 +165,46 @@
       {
         "command": "rubin.startAgent",
         "title": "Rubin: Start Agent Mode"
+      },
+      {
+        "command": "rubin.inlineEdit",
+        "title": "Rubin: Edit with AI (Inline)"
+      },
+      {
+        "command": "rubin.generateCommitMessage",
+        "title": "Rubin: Generate Commit Message"
+      },
+      {
+        "command": "rubin.explainCode",
+        "title": "Rubin: Explain Code"
+      },
+      {
+        "command": "rubin.fixCode",
+        "title": "Rubin: Fix Code"
+      },
+      {
+        "command": "rubin.generateTests",
+        "title": "Rubin: Generate Tests"
+      },
+      {
+        "command": "rubin.addDocs",
+        "title": "Rubin: Add Documentation"
+      },
+      {
+        "command": "rubin.optimizeCode",
+        "title": "Rubin: Optimize Code"
+      },
+      {
+        "command": "rubin.refactorCode",
+        "title": "Rubin: Refactor Code"
+      },
+      {
+        "command": "rubin.manageMCPServers",
+        "title": "Rubin: Manage MCP Servers"
+      },
+      {
+        "command": "rubin.refreshMCPServers",
+        "title": "Rubin: Refresh MCP Servers"
       }
     ],
     "menus": {
@@ -115,6 +213,32 @@
           "command": "rubin.askAboutCode",
           "when": "editorHasSelection",
           "group": "rubin"
+        },
+        {
+          "command": "rubin.inlineEdit",
+          "when": "editorHasSelection",
+          "group": "rubin"
+        },
+        {
+          "command": "rubin.explainCode",
+          "when": "editorHasSelection",
+          "group": "rubin"
+        },
+        {
+          "command": "rubin.fixCode",
+          "when": "editorHasSelection",
+          "group": "rubin"
+        },
+        {
+          "command": "rubin.generateTests",
+          "when": "editorHasSelection",
+          "group": "rubin"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "rubin.generateCommitMessage",
+          "group": "navigation"
         }
       ]
     },
@@ -123,6 +247,12 @@
         "command": "rubin.openChat",
         "key": "ctrl+shift+r",
         "mac": "cmd+shift+r"
+      },
+      {
+        "command": "rubin.inlineEdit",
+        "key": "ctrl+shift+i",
+        "mac": "cmd+shift+i",
+        "when": "editorHasSelection"
       },
       {
         "command": "rubin.askAboutCode",

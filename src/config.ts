@@ -18,7 +18,7 @@ export function getConfig(): LocalCopilotConfig {
     return {
         enabled: config.get<boolean>('enabled', true),
         serverUrl: config.get<string>('serverUrl', 'http://localhost:11434'),
-        model: config.get<string>('model', 'codellama'),
+        model: config.get<string>('model', 'llama3.1:8b'),
         maxTokens: config.get<number>('maxTokens', 150),
         temperature: config.get<number>('temperature', 0.2),
         debounceMs: config.get<number>('debounceMs', 300),
