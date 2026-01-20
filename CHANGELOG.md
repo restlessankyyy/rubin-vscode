@@ -5,6 +5,32 @@ All notable changes to the Rubin extension will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-01-20
+
+### Added - MCP Integration & UI Overhaul
+- **MCP Server Integration** - Connect to Model Context Protocol servers for extensible tool capabilities
+  - Configure servers via `rubin.mcpServers` setting
+  - Auto-discovery of MCP tools on connection
+  - Tools appear in Agent mode with `mcp_` prefix
+  - Supports any MCP-compatible server (filesystem, GitHub, databases, etc.)
+- **Manage MCP Servers** command - View connected servers, show tools, connect/disconnect
+- **Refresh MCP Servers** command - Hot-reload server configurations
+
+### Changed
+- **GitHub Copilot-style UI** - Complete redesign matching Copilot Chat aesthetics
+  - Centered welcome screen with tips
+  - Bouncing dots loading animation
+  - Modern chip-style follow-up suggestions
+  - Bottom-docked input toolbar
+  - Clean agent step visualization
+- **Default model** changed from `codellama` to `llama3.1:8b` for better agent performance
+- **Improved response cleaning** - Strips model artifacts (System:, ##, role prefixes)
+- **Context persistence** - Conversation restored when panel is hidden and shown again
+
+### Fixed
+- Agent retry loop - Now stops after 2 consecutive failures of same action
+- Panel visibility handling - Proper `onDidChangeVisibility` listener
+
 ## [0.6.0] - 2026-01-20
 
 ### Added - Major Feature Update

@@ -4,13 +4,13 @@
   <img src="https://img.shields.io/badge/Ollama-Powered-blue?style=for-the-badge" alt="Ollama Powered"/>
   <img src="https://img.shields.io/badge/VS%20Code-Extension-007ACC?style=for-the-badge" alt="VS Code Extension"/>
   <img src="https://img.shields.io/badge/100%25-Private-green?style=for-the-badge" alt="100% Private"/>
-  <img src="https://img.shields.io/badge/v0.6.0-Latest-orange?style=for-the-badge" alt="v0.6.0"/>
+  <img src="https://img.shields.io/badge/v0.7.0-Latest-orange?style=for-the-badge" alt="v0.7.0"/>
 </p>
 
 <p align="center">
   <strong>Your AI coding assistant that runs entirely on your machine.</strong>
   <br>
-  Streaming Chat • 12 Slash Commands • Autonomous Agent • @Mentions • Smart Context
+  Streaming Chat • 12 Slash Commands • Autonomous Agent • @Mentions • Smart Context • MCP Servers
 </p>
 
 ---
@@ -91,7 +91,39 @@ The most powerful feature! Switch to Agent mode for multi-step tasks with 14 too
 
 All sensitive operations require user approval for safety!
 
-### 🖱️ Code Actions (Right-Click Menu)
+### � MCP Server Integration
+
+Extend Rubin's capabilities with **Model Context Protocol (MCP)** servers:
+
+```json
+// settings.json
+"rubin.mcpServers": [
+  {
+    "name": "filesystem",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"],
+    "enabled": true
+  },
+  {
+    "name": "github",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github"],
+    "env": { "GITHUB_TOKEN": "your-token" }
+  }
+]
+```
+
+**Popular MCP Servers:**
+| Server | Description |
+|--------|-------------|
+| `@modelcontextprotocol/server-filesystem` | File system operations |
+| `@modelcontextprotocol/server-github` | GitHub API integration |
+| `@modelcontextprotocol/server-postgres` | PostgreSQL database access |
+| `@modelcontextprotocol/server-brave-search` | Web search capabilities |
+
+MCP tools appear automatically in Agent mode with `mcp_` prefix!
+
+### �🖱️ Code Actions (Right-Click Menu)
 
 Select code → Right-click → "Rubin" submenu:
 - **Explain with Rubin** - Get explanation
@@ -179,6 +211,7 @@ ollama pull codellama:7b        # Good for completions
 | `rubin.maxTokens` | `256` | Max tokens for completions |
 | `rubin.temperature` | `0.2` | Creativity (0-1) |
 | `rubin.debounceTime` | `300` | Completion delay (ms) |
+| `rubin.mcpServers` | `[]` | MCP server configurations |
 
 ---
 
@@ -273,7 +306,8 @@ rubin/
 │   ├── extension.ts      # Entry point
 │   ├── ollamaClient.ts   # HTTP client with streaming
 │   ├── unifiedPanel.ts   # Chat/Agent webview
-│   ├── agentProvider.ts  # Autonomous agent (14 tools)
+│   ├── agentProvider.ts  # Autonomous agent (14+ tools)
+│   ├── mcpClient.ts      # MCP server integration
 │   ├── completionProvider.ts  # Inline completions
 │   ├── slashCommands.ts  # 12 slash commands
 │   ├── participants.ts   # @mentions system

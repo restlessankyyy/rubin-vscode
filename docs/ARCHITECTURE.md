@@ -43,6 +43,7 @@ src/
 ├── config.ts             # Configuration management
 ├── logger.ts             # Centralized logging
 ├── ollamaClient.ts       # HTTP client for Ollama API
+├── mcpClient.ts          # MCP server management
 ├── completionProvider.ts # Inline code completions
 ├── chatProvider.ts       # Chat sidebar (legacy)
 ├── unifiedPanel.ts       # Combined chat + agent webview
@@ -337,6 +338,36 @@ interface LocalCopilotConfig {
 3. Workspace diagnostics (priority 8)
 4. Open editor tabs (priority 5)
 
+### mcpClient.ts
+
+**Purpose**: Model Context Protocol (MCP) server integration.
+
+**Classes**:
+- `MCPServer`: Manages individual MCP server connections
+- `MCPManager`: Singleton managing multiple MCP servers
+
+**Features**:
+- JSON-RPC 2.0 communication over stdio
+- Tool discovery and execution
+- Resource listing
+- Hot-reload on configuration changes
+
+**Configuration Schema**:
+```typescript
+interface MCPServerConfig {
+    name: string;           // Server identifier
+    command: string;        // Executable command
+    args?: string[];        // Command arguments
+    env?: Record<string, string>;  // Environment variables
+    enabled?: boolean;      // Enable/disable server
+}
+```
+
+**MCP Tools in Agent**:
+MCP tools are automatically prefixed with `mcp_` and include the server name:
+- `mcp_filesystem_readFile` - Read file via filesystem MCP server
+- `mcp_github_searchRepositories` - Search repos via GitHub MCP server
+
 ---
 
 ## Agent System
@@ -505,13 +536,16 @@ context.subscriptions.push(newCommand);
 
 ## Future Enhancements
 
-- [ ] Streaming responses
+- [x] Streaming responses
 - [ ] Multiple conversation threads
-- [ ] Custom tool definitions
-- [ ] Workspace indexing
-- [ ] Git integration
-- [ ] Test generation
-- [ ] Documentation generation
+- [x] Custom tool definitions (via MCP)
+- [x] Workspace indexing
+- [x] Git integration
+- [x] Test generation
+- [x] Documentation generation
+- [x] MCP Server Integration
+- [ ] Multi-modal support (images)
+- [ ] Remote Ollama connections
 
 ---
 

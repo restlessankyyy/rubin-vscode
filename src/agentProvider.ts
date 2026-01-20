@@ -4,12 +4,26 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { getConfig } from './config';
 import { getOllamaClient } from './ollamaClient';
+import { getMCPManager, MCPTool } from './mcpClient';
+
+// Terminal history for context
+interface TerminalCommand {
+    command: string;
+    output: string;
+    success: boolean;
+    timestamp: Date;
+}
+
+// Keep track of recent terminal commands
+const terminalHistory: TerminalCommand[] = [];
+const MAX_TERMINAL_HISTORY = 10;
 
 // Tool definitions that the AI can call
 export interface AgentTool {
     name: string;
     description: string;
     parameters: Record<string, { type: string; description: string; required?: boolean }>;
+    mcpServer?: string; // If this tool comes from an MCP server
 }
 
 export interface ToolCall {
@@ -141,6 +155,11 @@ const AGENT_TOOLS: AgentTool[] = [
             filePath: { type: 'string', description: 'Optional file path to get diff for. Omit for all changes.', required: false },
         },
     },
+    {
+        name: 'getTerminalHistory',
+        description: 'Get recent terminal command history with their outputs. Useful to see what commands were run and their results.',
+        parameters: {},
+    },
 ];
 
 export class AgentProvider {
@@ -148,6 +167,8 @@ export class AgentProvider {
     private abortController: AbortController | null = null;
     private conversationHistory: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
     private eventCallback: AgentEventCallback | null = null;
+    private lastFailedToolCall: string | null = null;
+    private consecutiveFailures: number = 0;
 
     // Approval mechanism
     private pendingApprovalResolve: ((allowed: boolean) => void) | null = null;
@@ -181,6 +202,61 @@ export class AgentProvider {
         }
     }
 
+    private async getGitContext(workspaceFolder: string): Promise<string> {
+        // Check if this is a git repository
+        const gitDir = path.join(workspaceFolder, '.git');
+        const isGitRepo = fs.existsSync(gitDir);
+        
+        if (!isGitRepo) {
+            return `⚠️ GIT CONTEXT: This is NOT a git repository. You need to run "git init" first before any git operations.`;
+        }
+
+        // Get git status, branch, and remote info
+        try {
+            const status = await new Promise<string>((resolve) => {
+                cp.exec('git status --short', { cwd: workspaceFolder }, (error, stdout) => {
+                    if (error) {
+                        resolve('Unable to get git status');
+                    } else {
+                        resolve(stdout.trim() || 'Working tree clean');
+                    }
+                });
+            });
+
+            const branch = await new Promise<string>((resolve) => {
+                cp.exec('git branch --show-current', { cwd: workspaceFolder }, (error, stdout) => {
+                    resolve(error ? 'unknown' : stdout.trim() || 'HEAD detached');
+                });
+            });
+
+            const remotes = await new Promise<string>((resolve) => {
+                cp.exec('git remote -v', { cwd: workspaceFolder }, (error, stdout) => {
+                    if (error || !stdout.trim()) {
+                        resolve('NO REMOTES CONFIGURED');
+                    } else {
+                        // Extract unique remote names and URLs
+                        const lines = stdout.trim().split('\n');
+                        const remoteInfo = lines
+                            .filter(l => l.includes('(push)'))
+                            .map(l => l.replace('(push)', '').trim())
+                            .join(', ');
+                        resolve(remoteInfo || 'NO REMOTES CONFIGURED');
+                    }
+                });
+            });
+
+            let context = `GIT CONTEXT:\n- Repository: initialized ✓\n- Branch: ${branch}\n- Status: ${status}\n- Remotes: ${remotes}`;
+            
+            if (remotes === 'NO REMOTES CONFIGURED') {
+                context += `\n\n⚠️ WARNING: No remote is configured. To push, you need to add a remote first:\n  git remote add origin <repository-url>\n\nAsk the user for the repository URL if they want to push.`;
+            }
+
+            return context;
+        } catch {
+            return 'GIT CONTEXT: Repository initialized but unable to get status.';
+        }
+    }
+
     isAgentRunning(): boolean {
         return this.isRunning;
     }
@@ -204,6 +280,8 @@ export class AgentProvider {
 
         this.isRunning = true;
         this.abortController = new AbortController();
+        this.lastFailedToolCall = null;
+        this.consecutiveFailures = 0;
 
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!workspaceFolder) {
@@ -215,19 +293,28 @@ export class AgentProvider {
             // Build the system prompt with tool definitions
             const systemPrompt = this.buildSystemPrompt();
 
+            // Pre-gather context for git-related tasks
+            let taskWithContext = task;
+            if (/git|commit|push|branch|merge/i.test(task)) {
+                const gitContext = await this.getGitContext(workspaceFolder);
+                taskWithContext = `${gitContext}\n\nTask: ${task}`;
+            }
+
             // Add user task to history
-            this.conversationHistory.push({ role: 'user', content: task });
+            this.conversationHistory.push({ role: 'user', content: taskWithContext });
 
             let finalResponse = '';
             let iterations = 0;
-            const maxIterations = 10; // Safety limit
+            let nudgeCount = 0;
+            const maxIterations = 15; // Safety limit
+            const maxNudges = 2; // Limit how many times we nudge the model
 
             while (iterations < maxIterations && this.isRunning) {
                 iterations++;
 
                 this.emitStep({
                     type: 'thinking',
-                    content: `Iteration ${iterations}: Processing...`,
+                    content: `Step ${iterations}...`,
                     timestamp: new Date(),
                 });
 
@@ -247,6 +334,22 @@ export class AgentProvider {
                 const toolCall = this.parseToolCall(response);
 
                 if (toolCall) {
+                    // Check for repeated failed tool calls (prevents infinite loops)
+                    const toolCallKey = `${toolCall.name}:${JSON.stringify(toolCall.parameters)}`;
+                    if (toolCallKey === this.lastFailedToolCall) {
+                        this.consecutiveFailures++;
+                        if (this.consecutiveFailures >= 2) {
+                            this.emitStep({
+                                type: 'response',
+                                content: `⚠️ Stopping: The same action failed ${this.consecutiveFailures} times. Please try a different approach or check if the command is valid.`,
+                                timestamp: new Date(),
+                            });
+                            this.lastFailedToolCall = null;
+                            this.consecutiveFailures = 0;
+                            break;
+                        }
+                    }
+
                     this.emitStep({
                         type: 'tool_call',
                         content: `Calling tool: ${toolCall.name}`,
@@ -257,6 +360,15 @@ export class AgentProvider {
 
                     // Execute the tool
                     const result = await this.executeTool(toolCall, workspaceFolder);
+
+                    // Track failures to prevent loops
+                    if (!result.success) {
+                        this.lastFailedToolCall = toolCallKey;
+                        this.consecutiveFailures++;
+                    } else {
+                        this.lastFailedToolCall = null;
+                        this.consecutiveFailures = 0;
+                    }
 
                     this.emitStep({
                         type: 'tool_result',
@@ -271,12 +383,40 @@ export class AgentProvider {
                         role: 'assistant',
                         content: `[TOOL_CALL: ${toolCall.name}]\n${JSON.stringify(toolCall.parameters)}`
                     });
+                    
+                    // Give clearer feedback on errors
+                    let resultMessage: string;
+                    if (result.success) {
+                        resultMessage = result.output || 'Command completed successfully.';
+                    } else {
+                        resultMessage = `❌ FAILED: ${result.error}\n\nYou need to fix this issue before continuing. Think about what prerequisite might be missing.`;
+                    }
+                    
                     this.conversationHistory.push({
                         role: 'system',
-                        content: `[TOOL_RESULT]\n${result.success ? result.output : `Error: ${result.error}`}`
+                        content: `[TOOL_RESULT]\n${resultMessage}`
                     });
                 } else {
-                    // No tool call - this is the final response
+                    // No tool call found in response
+                    // Check if this looks like an incomplete response (planning text)
+                    const looksIncomplete = this.looksLikeIncompleteResponse(response);
+                    
+                    if (looksIncomplete && nudgeCount < maxNudges) {
+                        // Model is outputting planning text instead of using tools
+                        // Nudge it to use a tool (but only a few times)
+                        nudgeCount++;
+                        this.conversationHistory.push({
+                            role: 'assistant',
+                            content: response
+                        });
+                        this.conversationHistory.push({
+                            role: 'system',
+                            content: 'You must use a tool now. Output ONLY a tool call in this exact format:\n```tool\n{"name": "toolName", "parameters": {...}}\n```\nIf the task is complete, just say "Done" with a brief summary.'
+                        });
+                        continue; // Try again
+                    }
+                    
+                    // This is the final response
                     // Clean up any raw tool markers the model might include
                     finalResponse = this.cleanFinalResponse(response);
                     this.conversationHistory.push({ role: 'assistant', content: finalResponse });
@@ -291,7 +431,7 @@ export class AgentProvider {
             }
 
             if (iterations >= maxIterations) {
-                finalResponse = 'Agent reached maximum iterations. Task may be incomplete.';
+                finalResponse = `Stopped after ${iterations} steps. The task may need to be broken down into smaller parts, or the model may need clearer instructions.`;
             }
 
             return finalResponse;
@@ -301,18 +441,58 @@ export class AgentProvider {
         }
     }
 
+    private getAllTools(): AgentTool[] {
+        // Start with built-in tools
+        const tools: AgentTool[] = [...AGENT_TOOLS];
+
+        // Add MCP tools
+        const mcpManager = getMCPManager();
+        const mcpTools = mcpManager.getAllTools();
+        
+        for (const { server, tool } of mcpTools) {
+            const params: Record<string, { type: string; description: string; required?: boolean }> = {};
+            
+            if (tool.inputSchema?.properties) {
+                for (const [name, schema] of Object.entries(tool.inputSchema.properties)) {
+                    params[name] = {
+                        type: (schema as { type?: string }).type || 'string',
+                        description: (schema as { description?: string }).description || '',
+                        required: tool.inputSchema.required?.includes(name),
+                    };
+                }
+            }
+
+            tools.push({
+                name: `mcp_${server}_${tool.name}`,
+                description: `[MCP: ${server}] ${tool.description}`,
+                parameters: params,
+                mcpServer: server,
+            });
+        }
+
+        return tools;
+    }
+
     private buildSystemPrompt(): string {
-        const toolDescriptions = AGENT_TOOLS.map(tool => {
+        const allTools = this.getAllTools();
+        const toolDescriptions = allTools.map(tool => {
             const params = Object.entries(tool.parameters)
                 .map(([name, info]) => `  - ${name}: ${info.description}`)
                 .join('\n');
-            return `- ${tool.name}: ${tool.description}\n${params}`;
+            return `- ${tool.name}: ${tool.description}${params ? '\n' + params : ''}`;
         }).join('\n\n');
+
+        // Get MCP servers info
+        const mcpManager = getMCPManager();
+        const mcpServers = mcpManager.getConnectedServers();
+        const mcpInfo = mcpServers.length > 0 
+            ? `\n\nCONNECTED MCP SERVERS: ${mcpServers.map(s => s.name).join(', ')}`
+            : '';
 
         return `You are Rubin, an AI coding agent. You MUST use tools to complete tasks. You cannot just talk - you must take action.
 
 AVAILABLE TOOLS:
-${toolDescriptions}
+${toolDescriptions}${mcpInfo}
 
 HOW TO USE A TOOL:
 When you need to perform an action, output EXACTLY this format:
@@ -339,13 +519,18 @@ To read a file:
 {"name": "readFile", "parameters": {"filePath": "package.json"}}
 \`\`\`
 
-RULES:
-1. ALWAYS use a tool when asked to do something. Never just describe what you would do.
-2. Use ONE tool per response.
-3. After each tool result, decide if you need another tool or if the task is done.
-4. When the task is complete, give a brief summary WITHOUT using any tool.
+CRITICAL RULES:
+1. ALWAYS use a tool when asked to do something. Never just describe or plan - USE THE TOOL.
+2. Use ONE tool per response. Output the tool call and NOTHING ELSE.
+3. After getting a tool result, immediately use the NEXT tool needed, or summarize if done.
+4. Keep going until the ENTIRE task is complete. Don't stop after one step.
+5. When fully done, give a SHORT summary (1-2 sentences). No headers like "##" or "Next Step".
+6. READ THE CONTEXT CAREFULLY. If it says "NOT a git repository", run "git init" first!
+7. If a command fails, understand WHY and fix the prerequisite first.
 
-START NOW - analyze the request and use the appropriate tool.`;
+You are in a loop. Each response should be EITHER a tool call OR a final summary. Nothing else.
+
+START NOW - use a tool immediately.`;
     }
 
     private async generateResponse(systemPrompt: string): Promise<string | null> {
@@ -381,32 +566,72 @@ START NOW - analyze the request and use the appropriate tool.`;
     }
 
     private cleanFinalResponse(response: string): string {
-        // Remove raw tool markers that some models include in their final response
         let cleaned = response;
+
+        // Remove ```tool blocks
+        cleaned = cleaned.replace(/```tool[\s\S]*?```/g, '');
+        
+        // Remove any other code blocks that look like tool calls
+        cleaned = cleaned.replace(/```json[\s\S]*?```/g, '');
 
         // Remove **TOOL_CALL** / **TOOL_RESULT** blocks
         cleaned = cleaned.replace(/\*\*TOOL_CALL:?\s*\w*\*\*[\s\S]*?(?=\n\n|\*\*|$)/gi, '');
         cleaned = cleaned.replace(/\*\*TOOL_RESULT\*\*[\s\S]*?(?=\n\n|\*\*|$)/gi, '');
 
-        // Remove ```tool blocks
-        cleaned = cleaned.replace(/```tool[\s\S]*?```/g, '');
-
         // Remove [TOOL_CALL] / [TOOL_RESULT] markers
         cleaned = cleaned.replace(/\[TOOL_CALL:?\s*\w*\][\s\S]*?(?=\n\n|\[|$)/gi, '');
         cleaned = cleaned.replace(/\[TOOL_RESULT\][\s\S]*?(?=\n\n|\[|$)/gi, '');
 
-        // Remove </start_of_turn> and similar model artifacts
+        // Remove model artifacts
         cleaned = cleaned.replace(/<\/?\w+_of_\w+>/g, '');
+        cleaned = cleaned.replace(/<\|.*?\|>/g, '');
+
+        // Remove role prefixes and conversation markers
+        cleaned = cleaned.replace(/^(System|User|Assistant|Human|AI):\s*/gim, '');
+        
+        // Remove markdown headers that are just formatting noise
+        cleaned = cleaned.replace(/^#{1,3}\s*$/gm, '');
+        
+        // Remove "Next step:" type phrases
+        cleaned = cleaned.replace(/^(Next step|Step \d+|Action|Plan|Thinking|Reasoning):.*$/gim, '');
+        
+        // Remove lines that are just metadata
+        cleaned = cleaned.replace(/^(Untracked files|nothing added to commit|use "git|Changes not staged).*$/gim, '');
 
         // Clean up extra whitespace
         cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
 
-        // If everything was stripped, provide a default message
-        if (!cleaned || cleaned.length < 5) {
-            cleaned = '✅ Done!';
+        // If everything was stripped or response is too short/meaningless, provide a default
+        if (!cleaned || cleaned.length < 10 || /^[\s\n#*\-_]+$/.test(cleaned)) {
+            cleaned = '✅ Task completed!';
         }
 
         return cleaned;
+    }
+
+    private looksLikeIncompleteResponse(response: string): boolean {
+        // Check if response looks like planning/thinking rather than a final answer
+        const incompletePatterns = [
+            /^##\s*(Next|Step|Plan|Action)/im,
+            /^(Next step|Step \d+|Plan|Action|I will|Let me|I'll|First,|Now I|Then I)/im,
+            /^\*\*Step/im,
+            /^(Here's|The next|To do this|I need to)/im,
+            /:\s*$/m, // Ends with a colon (incomplete thought)
+        ];
+        
+        // Check if any incomplete pattern matches
+        for (const pattern of incompletePatterns) {
+            if (pattern.test(response)) {
+                return true;
+            }
+        }
+        
+        // If response is very short and doesn't look like a completion message
+        if (response.length < 50 && !/done|complete|success|finish|✅/i.test(response)) {
+            return true;
+        }
+        
+        return false;
     }
 
     private parseToolCall(response: string): ToolCall | null {
@@ -558,30 +783,129 @@ START NOW - analyze the request and use the appropriate tool.`;
                 return this.executeGitStatus(workspaceFolder);
             case 'gitDiff':
                 return this.executeGitDiff(toolCall.parameters.filePath, workspaceFolder);
+            case 'getTerminalHistory':
+                return this.executeGetTerminalHistory();
             default:
+                // Check if it's an MCP tool (format: mcp_serverName_toolName)
+                if (toolCall.name.startsWith('mcp_')) {
+                    return this.executeMCPTool(toolCall);
+                }
                 return { success: false, output: '', error: `Unknown tool: ${toolCall.name}` };
+        }
+    }
+
+    private async executeMCPTool(toolCall: ToolCall): Promise<ToolResult> {
+        try {
+            // Parse the tool name: mcp_serverName_toolName
+            const parts = toolCall.name.split('_');
+            if (parts.length < 3) {
+                return { success: false, output: '', error: 'Invalid MCP tool name format' };
+            }
+            
+            const serverName = parts[1];
+            const toolName = parts.slice(2).join('_'); // Handle tool names with underscores
+            
+            const mcpManager = getMCPManager();
+            const result = await mcpManager.callTool(serverName, toolName, toolCall.parameters);
+            
+            // Format the result
+            let output = '';
+            if (typeof result === 'string') {
+                output = result;
+            } else if (result && typeof result === 'object') {
+                // MCP tools often return { content: [...] }
+                const resultObj = result as { content?: Array<{ text?: string; type?: string }> };
+                if (resultObj.content && Array.isArray(resultObj.content)) {
+                    output = resultObj.content
+                        .map((c: { text?: string }) => c.text || '')
+                        .filter(Boolean)
+                        .join('\n');
+                } else {
+                    output = JSON.stringify(result, null, 2);
+                }
+            }
+            
+            return { success: true, output };
+        } catch (error) {
+            return {
+                success: false,
+                output: '',
+                error: error instanceof Error ? error.message : 'MCP tool execution failed',
+            };
         }
     }
 
     private async executeRunCommand(command: string, cwd: string): Promise<ToolResult> {
         return new Promise((resolve) => {
+            // Create or reuse a visible terminal for agent commands
+            let terminal = vscode.window.terminals.find(t => t.name === 'Rubin Agent');
+            if (!terminal) {
+                terminal = vscode.window.createTerminal({
+                    name: 'Rubin Agent',
+                    cwd: cwd
+                });
+            }
+            
+            // Show the terminal so user can see what's happening
+            terminal.show(true);
+            
+            // Add a visual marker in terminal
+            terminal.sendText(`echo "🤖 Rubin executing: ${command.replace(/"/g, '\\"')}"`);
+            terminal.sendText(command);
+            
+            // Run the command in the background to capture output
             const timeout = 30000; // 30 second timeout
 
             cp.exec(command, { cwd, timeout, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-                if (error) {
-                    resolve({
-                        success: false,
-                        output: stdout || '',
-                        error: stderr || error.message,
-                    });
-                } else {
-                    resolve({
-                        success: true,
-                        output: stdout + (stderr ? `\nStderr: ${stderr}` : ''),
-                    });
+                const result: ToolResult = error ? {
+                    success: false,
+                    output: stdout || '',
+                    error: stderr || error.message,
+                } : {
+                    success: true,
+                    output: stdout + (stderr ? `\nStderr: ${stderr}` : ''),
+                };
+                
+                // Store in terminal history
+                terminalHistory.push({
+                    command,
+                    output: result.output || result.error || '',
+                    success: result.success,
+                    timestamp: new Date(),
+                });
+                
+                // Keep history limited
+                while (terminalHistory.length > MAX_TERMINAL_HISTORY) {
+                    terminalHistory.shift();
                 }
+                
+                resolve(result);
             });
         });
+    }
+
+    private executeGetTerminalHistory(): ToolResult {
+        if (terminalHistory.length === 0) {
+            return { success: true, output: 'No terminal commands have been run yet in this session.' };
+        }
+        
+        let output = 'Recent terminal commands:\n\n';
+        for (const cmd of terminalHistory) {
+            const status = cmd.success ? '✓' : '✗';
+            const time = cmd.timestamp.toLocaleTimeString();
+            output += `[${time}] ${status} $ ${cmd.command}\n`;
+            if (cmd.output) {
+                const lines = cmd.output.split('\n').slice(0, 10);
+                output += lines.map(l => `  ${l}`).join('\n');
+                if (cmd.output.split('\n').length > 10) {
+                    output += '\n  ... (output truncated)';
+                }
+                output += '\n';
+            }
+            output += '\n';
+        }
+        
+        return { success: true, output };
     }
 
     private async executeReadFile(filePath: string, workspaceFolder: string): Promise<ToolResult> {

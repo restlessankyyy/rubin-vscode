@@ -93,8 +93,35 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
             });
         });
 
+        // Restore conversation when view becomes visible again
+        webviewView.onDidChangeVisibility(() => {
+            if (webviewView.visible) {
+                this._restoreConversation();
+            }
+        });
+
         // Load models when view opens
         this._loadModels();
+        
+        // Restore any existing conversation
+        this._restoreConversation();
+    }
+
+    private _restoreConversation() {
+        // Restore previous messages to the webview
+        for (const msg of this._conversationHistory) {
+            this._postMessage({
+                type: msg.role === 'user' ? 'userMessage' : 'assistantMessage',
+                content: msg.content
+            });
+        }
+        // Restore attached files
+        if (this._attachedFiles.length > 0) {
+            this._postMessage({
+                type: 'filesUpdated',
+                files: this._attachedFiles.map(f => f.name)
+            });
+        }
     }
 
     private async _loadModels() {
@@ -345,131 +372,166 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
             font-family: var(--vscode-font-family);
             font-size: 13px;
             color: var(--vscode-foreground);
-            background: var(--vscode-sideBar-background);
+            background: var(--vscode-editor-background);
             height: 100vh;
             display: flex;
             flex-direction: column;
         }
         
-        /* Header */
-        .header {
-            padding: 10px 12px;
-            border-bottom: 1px solid var(--vscode-panel-border);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .header h3 {
-            font-size: 13px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .header-actions {
-            margin-left: auto;
-            display: flex;
-            gap: 6px;
-        }
-        .icon-btn {
-            background: transparent;
-            border: none;
-            color: var(--vscode-foreground);
-            cursor: pointer;
-            padding: 4px;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        .icon-btn:hover { background: var(--vscode-toolbar-hoverBackground); }
-        
-        /* Messages */
+        /* Messages Area */
         .messages {
             flex: 1;
             overflow-y: auto;
-            padding: 12px;
+            padding: 16px;
         }
+        
+        /* Welcome - Copilot Style */
+        .welcome {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+            color: var(--vscode-descriptionForeground);
+            padding: 40px 20px;
+        }
+        .welcome-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.6;
+        }
+        .welcome h2 { 
+            color: var(--vscode-foreground); 
+            font-size: 18px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        .welcome p { 
+            font-size: 12px; 
+            line-height: 1.5;
+            max-width: 280px;
+        }
+        .welcome-link {
+            color: var(--vscode-textLink-foreground);
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .welcome-link:hover { text-decoration: underline; }
+        
+        /* Message Bubbles */
         .message {
             margin-bottom: 16px;
             animation: fadeIn 0.2s ease;
         }
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(5px); }
+            from { opacity: 0; transform: translateY(4px); }
             to { opacity: 1; transform: translateY(0); }
         }
         .message-header {
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 600;
-            margin-bottom: 4px;
-            color: var(--vscode-descriptionForeground);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
-        .user-message .message-header { color: var(--vscode-textLink-foreground); }
-        .assistant-message .message-header { color: var(--vscode-charts-green); }
+        .user-message .message-header { color: var(--vscode-foreground); }
+        .assistant-message .message-header { color: var(--vscode-foreground); }
         .message-content {
-            background: var(--vscode-input-background);
-            padding: 10px 12px;
-            border-radius: 8px;
-            line-height: 1.5;
+            padding: 0;
+            line-height: 1.6;
             word-wrap: break-word;
         }
         .user-message .message-content {
             background: var(--vscode-button-background);
             color: var(--vscode-button-foreground);
+            padding: 10px 14px;
+            border-radius: 12px;
+            display: inline-block;
+            max-width: 90%;
+        }
+        .assistant-message .message-content {
+            color: var(--vscode-foreground);
         }
         .message-content pre {
             background: var(--vscode-textCodeBlock-background);
-            padding: 8px;
-            border-radius: 4px;
+            padding: 12px;
+            border-radius: 6px;
             overflow-x: auto;
             margin: 8px 0;
             font-family: var(--vscode-editor-font-family);
             font-size: 12px;
+            border: 1px solid var(--vscode-panel-border);
         }
         .message-content code {
             background: var(--vscode-textCodeBlock-background);
-            padding: 2px 4px;
-            border-radius: 3px;
+            padding: 2px 6px;
+            border-radius: 4px;
             font-family: var(--vscode-editor-font-family);
+            font-size: 12px;
         }
         .message-content pre code { background: none; padding: 0; }
         
-        /* Agent Steps - Subtle inline display */
+        /* Agent Steps - Modern chips */
+        .agent-steps-container { 
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 12px 0;
+        }
         .agent-step {
             display: inline-flex;
             align-items: center;
-            gap: 4px;
-            padding: 4px 8px;
-            margin: 2px 4px 2px 0;
-            border-radius: 12px;
-            font-size: 11px;
-            background: var(--vscode-badge-background);
-            color: var(--vscode-badge-foreground);
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-panel-border);
+            transition: all 0.15s ease;
         }
-        .step-thinking { opacity: 0.7; }
-        .step-tool_call { background: var(--vscode-inputValidation-warningBackground); }
-        .step-tool_result { background: var(--vscode-charts-green); color: white; }
-        .step-tool_result.error { background: var(--vscode-errorForeground); }
-        .step-header { font-size: 11px; }
-        .step-content { display: none; } /* Hide verbose content by default */
-        .agent-steps-container { margin-bottom: 8px; }
+        .step-tool_call { 
+            border-color: var(--vscode-charts-yellow);
+            background: color-mix(in srgb, var(--vscode-charts-yellow) 10%, transparent);
+        }
+        .step-tool_result { 
+            border-color: var(--vscode-charts-green);
+            background: color-mix(in srgb, var(--vscode-charts-green) 10%, transparent);
+        }
+        .step-tool_result.error { 
+            border-color: var(--vscode-errorForeground);
+            background: color-mix(in srgb, var(--vscode-errorForeground) 10%, transparent);
+        }
         
         /* Typing indicator */
         .typing {
             display: none;
-            padding: 8px 12px;
+            padding: 12px 0;
             color: var(--vscode-descriptionForeground);
-            font-style: italic;
+            font-size: 12px;
         }
-        .typing.visible { display: block; }
-        .typing::after { content: ''; animation: dots 1.5s infinite; }
-        @keyframes dots {
-            0%, 20% { content: '.'; }
-            40% { content: '..'; }
-            60%, 100% { content: '...'; }
+        .typing.visible { display: flex; align-items: center; gap: 8px; }
+        .typing-dots { display: flex; gap: 3px; }
+        .typing-dot {
+            width: 6px; height: 6px;
+            background: var(--vscode-descriptionForeground);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out;
+        }
+        .typing-dot:nth-child(1) { animation-delay: 0s; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+            40% { transform: scale(1); opacity: 1; }
         }
         
-        /* Input area */
+        /* Input area - Copilot Style */
         .input-area {
-            padding: 12px;
+            padding: 12px 16px 16px;
+            background: var(--vscode-editor-background);
             border-top: 1px solid var(--vscode-panel-border);
         }
         
@@ -478,148 +540,134 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
         }
         .attached-files:empty { display: none; }
         .file-chip {
             display: flex;
             align-items: center;
-            gap: 4px;
-            background: var(--vscode-badge-background);
-            color: var(--vscode-badge-foreground);
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-size: 11px;
+            gap: 6px;
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-panel-border);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
         }
+        .file-chip .file-icon { opacity: 0.7; }
         .file-chip button {
             background: none;
             border: none;
-            color: inherit;
+            color: var(--vscode-descriptionForeground);
             cursor: pointer;
             padding: 0;
-            font-size: 12px;
-            opacity: 0.7;
+            font-size: 14px;
+            line-height: 1;
         }
-        .file-chip button:hover { opacity: 1; }
+        .file-chip button:hover { color: var(--vscode-foreground); }
         
-        /* Toolbar */
-        .toolbar {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 8px;
-        }
-        .mode-select, .model-select {
-            background: var(--vscode-dropdown-background);
-            color: var(--vscode-dropdown-foreground);
-            border: 1px solid var(--vscode-dropdown-border);
-            border-radius: 4px;
-            padding: 4px 8px;
-            font-size: 11px;
-            cursor: pointer;
-        }
-        .mode-select { font-weight: 600; }
-        .toolbar-spacer { flex: 1; }
-        
-        /* Input wrapper */
-        .input-wrapper {
-            display: flex;
-            align-items: flex-end;
-            gap: 8px;
+        /* Input box */
+        .input-box {
             background: var(--vscode-input-background);
             border: 1px solid var(--vscode-input-border);
             border-radius: 8px;
-            padding: 8px;
+            overflow: hidden;
         }
-        .input-wrapper:focus-within {
+        .input-box:focus-within {
             border-color: var(--vscode-focusBorder);
         }
         textarea {
-            flex: 1;
+            width: 100%;
             background: transparent;
             color: var(--vscode-input-foreground);
             border: none;
             font-family: var(--vscode-font-family);
             font-size: 13px;
             resize: none;
-            min-height: 24px;
+            padding: 12px;
+            min-height: 44px;
             max-height: 150px;
             outline: none;
         }
         textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
-        .input-actions {
+        
+        /* Input toolbar */
+        .input-toolbar {
             display: flex;
+            align-items: center;
+            padding: 6px 8px;
+            gap: 4px;
+            border-top: 1px solid var(--vscode-panel-border);
+            background: var(--vscode-input-background);
+        }
+        .toolbar-btn {
+            background: none;
+            border: none;
+            color: var(--vscode-descriptionForeground);
+            cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 4px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
             gap: 4px;
         }
+        .toolbar-btn:hover { 
+            background: var(--vscode-toolbar-hoverBackground); 
+            color: var(--vscode-foreground);
+        }
+        .toolbar-btn.active { color: var(--vscode-textLink-foreground); }
+        .toolbar-divider {
+            width: 1px;
+            height: 16px;
+            background: var(--vscode-panel-border);
+            margin: 0 4px;
+        }
+        .toolbar-spacer { flex: 1; }
+        
+        /* Mode & Model selects */
+        .mode-select, .model-select {
+            background: transparent;
+            color: var(--vscode-foreground);
+            border: none;
+            font-size: 12px;
+            cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 4px;
+        }
+        .mode-select:hover, .model-select:hover {
+            background: var(--vscode-toolbar-hoverBackground);
+        }
+        .mode-select { font-weight: 600; }
+        
+        /* Send button */
         .send-btn {
             background: var(--vscode-button-background);
             color: var(--vscode-button-foreground);
             border: none;
-            border-radius: 4px;
-            width: 28px;
-            height: 28px;
+            border-radius: 6px;
+            width: 36px;
+            height: 30px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.2s ease;
         }
-        .send-btn:hover { background: var(--vscode-button-hoverBackground); }
+        .send-btn:hover { background: var(--vscode-button-hoverBackground); transform: scale(1.05); }
         .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        
-        /* Welcome */
-        .welcome {
-            text-align: center;
-            padding: 30px 20px;
-            color: var(--vscode-descriptionForeground);
+        .send-btn.processing {
+            background: #e74c3c;
+            color: white;
+            animation: processing-pulse 1s infinite;
         }
-        .welcome h2 { color: var(--vscode-foreground); margin-bottom: 8px; font-size: 16px; }
-        .welcome p { font-size: 12px; margin-bottom: 16px; }
-        
-        /* Error */
-        .error-msg {
-            color: var(--vscode-errorForeground);
-            background: var(--vscode-inputValidation-errorBackground);
-            padding: 8px 12px;
-            border-radius: 4px;
-            margin-bottom: 12px;
-            font-size: 12px;
+        .send-btn.processing:hover {
+            background: #c0392b;
         }
-        
-        /* Streaming indicator */
-        .message.streaming .message-content::after {
-            content: '▊';
-            animation: blink 1s infinite;
-            color: var(--vscode-textLink-foreground);
-        }
-        @keyframes blink { 50% { opacity: 0; } }
-        
-        /* Follow-up suggestions */
-        .follow-ups {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin: 8px 0 16px 0;
-            padding-left: 12px;
-        }
-        .follow-up-btn {
-            background: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
-            border: 1px solid var(--vscode-button-border, transparent);
-            border-radius: 14px;
-            padding: 4px 12px;
-            font-size: 11px;
-            cursor: pointer;
-            transition: all 0.15s ease;
-        }
-        .follow-up-btn:hover {
-            background: var(--vscode-button-secondaryHoverBackground);
-            transform: translateY(-1px);
-        }
-        
-        /* @mention highlighting in input */
-        .mention { 
-            color: var(--vscode-textLink-foreground);
-            font-weight: 600;
+        @keyframes processing-pulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4); }
+            50% { transform: scale(1.05); box-shadow: 0 0 0 6px rgba(231, 76, 60, 0); }
         }
         
         /* Agent status */
@@ -627,75 +675,147 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
             display: none;
             align-items: center;
             gap: 8px;
-            padding: 6px 10px;
-            background: var(--vscode-inputValidation-infoBackground);
-            border-radius: 6px;
-            margin-bottom: 8px;
-            font-size: 11px;
+            padding: 8px 12px;
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-size: 12px;
         }
-        .agent-status.visible { display: flex; }
+        .agent-status.visible { 
+            display: flex; 
+            animation: slideIn 0.2s ease-out;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
         .spinner {
-            width: 12px; height: 12px;
-            border: 2px solid var(--vscode-foreground);
-            border-top-color: transparent;
+            width: 14px; height: 14px;
+            border: 2px solid var(--vscode-descriptionForeground);
+            border-top-color: var(--vscode-textLink-foreground);
             border-radius: 50%;
-            animation: spin 1s linear infinite;
+            animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         .stop-btn {
             margin-left: auto;
-            background: var(--vscode-inputValidation-errorBackground);
-            color: var(--vscode-errorForeground);
+            background: #e74c3c;
+            color: white;
             border: none;
-            padding: 3px 8px;
+            padding: 5px 12px;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 10px;
+            font-size: 11px;
+            font-weight: 600;
         }
+        .stop-btn:hover { background: #c0392b; }
+        
         /* Approval Dialog */
         .approval-dialog {
             background: var(--vscode-input-background);
             border: 1px solid var(--vscode-panel-border);
-            border-radius: 6px;
-            padding: 10px;
-            margin: 8px 0;
-            border-left: 3px solid var(--vscode-charts-yellow);
+            border-radius: 8px;
+            padding: 12px;
+            margin: 12px 0;
         }
-        .approval-dialog h4 { margin: 0 0 8px 0; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+        .approval-dialog h4 { 
+            margin: 0 0 10px 0; 
+            font-size: 12px; 
+            font-weight: 600;
+            display: flex; 
+            align-items: center; 
+            gap: 8px; 
+            color: var(--vscode-charts-yellow);
+        }
         .approval-code { 
             background: var(--vscode-textCodeBlock-background);
-            padding: 8px;
-            border-radius: 4px;
+            padding: 10px 12px;
+            border-radius: 6px;
             font-family: var(--vscode-editor-font-family);
-            font-size: 11px;
-            margin-bottom: 8px;
+            font-size: 12px;
+            margin-bottom: 12px;
             overflow-x: auto;
             white-space: pre-wrap;
+            border: 1px solid var(--vscode-panel-border);
         }
         .approval-actions { display: flex; gap: 8px; justify-content: flex-end; }
-        .btn { padding: 4px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; }
+        .btn { 
+            padding: 6px 14px; 
+            border: none; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-size: 12px;
+            font-weight: 500;
+        }
         .btn-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
         .btn-primary:hover { background: var(--vscode-button-hoverBackground); }
-        .btn-secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
-        .btn-secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
-        .approved { border-left-color: var(--vscode-charts-green); opacity: 0.7; }
-        .denied { border-left-color: var(--vscode-errorForeground); opacity: 0.7; }
+        .btn-secondary { 
+            background: transparent; 
+            color: var(--vscode-foreground); 
+            border: 1px solid var(--vscode-panel-border);
+        }
+        .btn-secondary:hover { background: var(--vscode-toolbar-hoverBackground); }
+        .approved .approval-actions { color: var(--vscode-charts-green); }
+        .denied .approval-actions { color: var(--vscode-errorForeground); }
+        
+        /* Follow-up suggestions */
+        .follow-ups {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 12px 0;
+        }
+        .follow-up-btn {
+            background: var(--vscode-input-background);
+            color: var(--vscode-foreground);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .follow-up-btn:hover {
+            border-color: var(--vscode-focusBorder);
+            background: var(--vscode-toolbar-hoverBackground);
+        }
+        
+        /* Error message */
+        .error-msg {
+            color: var(--vscode-errorForeground);
+            background: color-mix(in srgb, var(--vscode-errorForeground) 10%, transparent);
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--vscode-errorForeground);
+            margin-bottom: 12px;
+            font-size: 12px;
+        }
+        
+        /* Streaming */
+        .message.streaming .message-content::after {
+            content: '▋';
+            animation: blink 1s infinite;
+            color: var(--vscode-textLink-foreground);
+        }
+        @keyframes blink { 50% { opacity: 0; } }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h3>🤖 Rubin</h3>
-        <div class="header-actions">
-            <button class="icon-btn" onclick="clearChat()" title="Clear chat">🗑️</button>
-        </div>
-    </div>
-    <!-- ... rest of HTML ... -->
     <div class="messages" id="messages">
         <div class="welcome" id="welcome">
-            <h2>Hey there! 👋</h2>
-            <p>I'm Rubin, your AI coding assistant.<br>Ask me anything or switch to Agent mode to automate tasks.</p>
+            <div class="welcome-icon">💬</div>
+            <h2>Build with Rubin</h2>
+            <p>AI responses may be inaccurate.<br><span class="welcome-link" onclick="showTips()">Tips for better results</span></p>
         </div>
-        <div class="typing" id="typing">Rubin is thinking</div>
+        <div class="typing" id="typing">
+            <div class="typing-dots">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            </div>
+            <span>Rubin is thinking...</span>
+        </div>
     </div>
 
     <div class="input-area">
@@ -707,23 +827,20 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
         
         <div class="attached-files" id="attachedFiles"></div>
         
-        <div class="toolbar">
-            <select class="mode-select" id="modeSelect" onchange="changeMode(this.value)">
-                <option value="chat">💬 Chat</option>
-                <option value="agent">🤖 Agent</option>
-            </select>
-            <select class="model-select" id="modelSelect" onchange="changeModel(this.value)">
-                <option>Loading...</option>
-            </select>
-            <div class="toolbar-spacer"></div>
-            <button class="icon-btn" onclick="attachFile()" title="Attach current file">📎</button>
-            <button class="icon-btn" onclick="refreshModels()" title="Refresh models">🔄</button>
-        </div>
-        
-        <div class="input-wrapper">
+        <div class="input-box">
             <textarea id="input" placeholder="Describe what to build next..." rows="1"></textarea>
-            <div class="input-actions">
-                <button class="send-btn" id="sendBtn" onclick="send()" title="Send">➤</button>
+            <div class="input-toolbar">
+                <button class="toolbar-btn" onclick="attachFile()" title="Attach file">📎</button>
+                <div class="toolbar-divider"></div>
+                <select class="mode-select" id="modeSelect" onchange="changeMode(this.value)">
+                    <option value="chat">💬 Chat</option>
+                    <option value="agent">🤖 Agent</option>
+                </select>
+                <select class="model-select" id="modelSelect" onchange="changeModel(this.value)">
+                    <option>Loading...</option>
+                </select>
+                <div class="toolbar-spacer"></div>
+                <button class="send-btn" id="sendBtn" onclick="handleSendClick()" title="Send">▶</button>
             </div>
         </div>
     </div>
@@ -807,6 +924,27 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
             input.style.height = 'auto';
         }
 
+        function handleSendClick() {
+            if (isWaiting) {
+                stopAgent();
+            } else {
+                send();
+            }
+        }
+
+        function setProcessingState(processing) {
+            isWaiting = processing;
+            if (processing) {
+                sendBtn.innerHTML = '■';
+                sendBtn.classList.add('processing');
+                sendBtn.title = 'Stop';
+            } else {
+                sendBtn.innerHTML = '▶';
+                sendBtn.classList.remove('processing');
+                sendBtn.title = 'Send';
+            }
+        }
+
         function changeMode(mode) {
             currentMode = mode;
             vscode.postMessage({ type: 'changeMode', mode });
@@ -837,6 +975,24 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
 
         function stopAgent() {
             vscode.postMessage({ type: 'stopAgent' });
+        }
+
+        function showTips() {
+            welcome.style.display = 'none';
+            const div = document.createElement('div');
+            div.className = 'message assistant-message';
+            div.innerHTML = \`
+                <div class="message-header">Rubin</div>
+                <div class="message-content">
+                    <strong>Tips for better results:</strong><br><br>
+                    • Be specific about what you want to build<br>
+                    • Use <code>@file</code> to reference files in your workspace<br>
+                    • Switch to <strong>Agent mode</strong> for multi-step tasks<br>
+                    • Attach files using 📎 for context<br>
+                    • Ask follow-up questions to refine the output
+                </div>
+            \`;
+            messages.insertBefore(div, typing);
         }
 
         function addMessage(role, content) {
@@ -883,9 +1039,16 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
         }
 
         function addFollowUpSuggestions(suggestions) {
+            // Remove any existing follow-ups first to avoid duplicates
+            messages.querySelectorAll('.follow-ups').forEach(el => el.remove());
+            
+            // Deduplicate suggestions
+            const uniqueSuggestions = [...new Set(suggestions)].slice(0, 3);
+            if (uniqueSuggestions.length === 0) return;
+            
             const container = document.createElement('div');
             container.className = 'follow-ups';
-            container.innerHTML = suggestions.map(s => 
+            container.innerHTML = uniqueSuggestions.map(s => 
                 '<button class="follow-up-btn" onclick="useFollowUp(\\x27' + escapeHtml(s).replace(/'/g, "\\\\'") + '\\x27)">' + escapeHtml(s) + '</button>'
             ).join('');
             messages.insertBefore(container, typing);
@@ -911,18 +1074,36 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
                 messages.insertBefore(container, typing);
             }
             
-            const chip = document.createElement('span');
-            chip.className = 'agent-step step-' + step.type;
-            if (step.type === 'tool_result' && step.result && !step.result.success) {
-                chip.classList.add('error');
+            // For tool_call, we show the pending chip
+            // For tool_result, we update the last chip to show success/failure
+            if (step.type === 'tool_result') {
+                // Find and update the last pending chip
+                const lastChip = container.querySelector('.agent-step.step-tool_call:last-of-type');
+                if (lastChip) {
+                    lastChip.className = 'agent-step step-tool_result' + (step.result?.success ? '' : ' error');
+                    const icon = step.result?.success ? '✓' : '✗';
+                    lastChip.innerHTML = icon + ' ' + (step.toolName || 'action');
+                    lastChip.title = step.result?.success 
+                        ? (step.result.output || 'Success').substring(0, 200)
+                        : (step.result?.error || 'Failed');
+                    return;
+                }
             }
             
-            const icon = step.type === 'tool_call' ? '🔧' : (step.result?.success ? '✅' : '❌');
+            const chip = document.createElement('span');
+            chip.className = 'agent-step step-' + step.type;
+            
+            const icon = step.type === 'tool_call' ? '⏳' : '✓';
             const label = step.toolName || 'action';
             chip.innerHTML = icon + ' ' + label;
-            chip.title = step.type === 'tool_call' 
-                ? JSON.stringify(step.toolParams, null, 2)
-                : (step.result?.output || step.result?.error || '');
+            
+            // Show params on hover for tool calls
+            if (step.type === 'tool_call' && step.toolParams) {
+                const paramSummary = Object.entries(step.toolParams)
+                    .map(([k, v]) => k + ': ' + String(v).substring(0, 50))
+                    .join('\\n');
+                chip.title = paramSummary;
+            }
             
             container.appendChild(chip);
             messages.scrollTop = messages.scrollHeight;
@@ -944,8 +1125,8 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
 
         function updateFiles(files) {
             attachedFiles.innerHTML = files.map(name => 
-                '<div class="file-chip">📄 ' + name + 
-                '<button onclick="removeFile(\\x27' + name + '\\x27)">×</button></div>'
+                '<div class="file-chip"><span class="file-icon">📄</span>' + name + 
+                '<button onclick="removeFile(\\x27' + name + '\\x27)" title="Remove">×</button></div>'
             ).join('');
         }
 
@@ -959,9 +1140,8 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
                     addMessage('assistant', data.content);
                     break;
                 case 'typing':
-                    isWaiting = data.isTyping;
+                    setProcessingState(data.isTyping);
                     typing.classList.toggle('visible', data.isTyping);
-                    sendBtn.disabled = data.isTyping;
                     break;
                 case 'agentStep':
                     if (data.step.type === 'approval_requested') {
@@ -971,14 +1151,12 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
                     }
                     break;
                 case 'agentStarted':
-                    isWaiting = true;
+                    setProcessingState(true);
                     agentStatus.classList.add('visible');
-                    sendBtn.disabled = true;
                     break;
                 case 'agentStopped':
-                    isWaiting = false;
+                    setProcessingState(false);
                     agentStatus.classList.remove('visible');
-                    sendBtn.disabled = false;
                     break;
                 case 'modelsLoaded':
                     const sel = document.getElementById('modelSelect');
