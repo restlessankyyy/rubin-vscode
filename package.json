@@ -1,8 +1,8 @@
 {
   "name": "rubin",
   "displayName": "Rubin - AI Coding Assistant",
-  "description": "Powerful AI coding assistant running 100% locally with Ollama. Features: streaming chat, 12 slash commands, autonomous agent mode, @mentions, code actions, inline edit, and smart context. Private, fast, free.",
-  "version": "0.6.0",
+  "description": "Powerful AI coding assistant running 100% locally with Ollama. Features: streaming chat, 12 slash commands, autonomous agent mode, @mentions, MCP server integration, code actions, inline edit, and smart context. Private, fast, free.",
+  "version": "0.7.0",
   "publisher": "restlessankyyy",
   "author": {
     "name": "Ankit Raj"
@@ -83,8 +83,8 @@
         },
         "rubin.model": {
           "type": "string",
-          "default": "codellama",
-          "description": "Model to use for completions (e.g., codellama, gemma:7b, deepseek-coder)"
+          "default": "llama3.1:8b",
+          "description": "Model to use for completions (e.g., llama3.1:8b, codellama, qwen2.5-coder:7b)"
         },
         "rubin.maxTokens": {
           "type": "number",
@@ -105,6 +105,39 @@
           "type": "number",
           "default": 50,
           "description": "Number of lines of context to include before cursor"
+        },
+        "rubin.mcpServers": {
+          "type": "array",
+          "default": [],
+          "description": "MCP (Model Context Protocol) servers to connect to",
+          "items": {
+            "type": "object",
+            "required": ["name", "command"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Unique name for this MCP server"
+              },
+              "command": {
+                "type": "string",
+                "description": "Command to start the MCP server"
+              },
+              "args": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Command line arguments"
+              },
+              "env": {
+                "type": "object",
+                "description": "Environment variables to set"
+              },
+              "enabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether this server is enabled"
+              }
+            }
+          }
         }
       }
     },
@@ -164,6 +197,14 @@
       {
         "command": "rubin.refactorCode",
         "title": "Rubin: Refactor Code"
+      },
+      {
+        "command": "rubin.manageMCPServers",
+        "title": "Rubin: Manage MCP Servers"
+      },
+      {
+        "command": "rubin.refreshMCPServers",
+        "title": "Rubin: Refresh MCP Servers"
       }
     ],
     "menus": {

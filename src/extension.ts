@@ -8,6 +8,7 @@ import { registerCodeActionProvider, registerCodeActionCommands } from './codeAc
 import { registerInlineChatCommands } from './inlineChat';
 import { registerGitCommands } from './gitIntegration';
 import { getWorkspaceIndexer } from './workspaceIndexer';
+import { getMCPManager, disposeMCPManager } from './mcpClient';
 
 let statusBarItem: vscode.StatusBarItem;
 let completionProvider: LocalCopilotCompletionProvider;
@@ -54,6 +55,9 @@ export function activate(context: vscode.ExtensionContext) {
     getWorkspaceIndexer().buildIndex().catch(err => {
         logger.warn('Failed to build workspace index', err);
     });
+
+    // Initialize MCP servers from configuration
+    initializeMCPServers();
 
     // Create status bar item
     statusBarItem = vscode.window.createStatusBarItem(
@@ -153,11 +157,96 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(startAgentCommand);
 
+    // MCP Server management commands
+    const manageMCPCommand = vscode.commands.registerCommand('rubin.manageMCPServers', async () => {
+        const mcpManager = getMCPManager();
+        const servers = mcpManager.getServers();
+        
+        if (servers.length === 0) {
+            const action = await vscode.window.showInformationMessage(
+                'No MCP servers configured. Would you like to add one?',
+                'Open Settings',
+                'Learn More'
+            );
+            if (action === 'Open Settings') {
+                vscode.commands.executeCommand('workbench.action.openSettings', 'rubin.mcpServers');
+            } else if (action === 'Learn More') {
+                vscode.env.openExternal(vscode.Uri.parse('https://modelcontextprotocol.io/'));
+            }
+            return;
+        }
+
+        const items = servers.map(server => ({
+            label: `$(${server.isConnected() ? 'check' : 'circle-slash'}) ${server.name}`,
+            description: server.isConnected() ? 'Connected' : 'Disconnected',
+            server
+        }));
+
+        items.push({
+            label: '$(add) Add New Server...',
+            description: 'Configure a new MCP server',
+            server: null as any
+        });
+
+        const selected = await vscode.window.showQuickPick(items, {
+            placeHolder: 'Select an MCP server to manage'
+        });
+
+        if (selected) {
+            if (!selected.server) {
+                vscode.commands.executeCommand('workbench.action.openSettings', 'rubin.mcpServers');
+                return;
+            }
+
+            const actions = selected.server.isConnected()
+                ? ['Show Tools', 'Disconnect', 'View Logs']
+                : ['Connect', 'Remove', 'View Logs'];
+
+            const action = await vscode.window.showQuickPick(actions, {
+                placeHolder: `Actions for ${selected.server.name}`
+            });
+
+            if (action === 'Connect') {
+                await selected.server.connect();
+                vscode.window.showInformationMessage(`Connected to ${selected.server.name}`);
+            } else if (action === 'Disconnect') {
+                selected.server.disconnect();
+                vscode.window.showInformationMessage(`Disconnected from ${selected.server.name}`);
+            } else if (action === 'Show Tools') {
+                const tools = selected.server.getTools();
+                if (tools.length === 0) {
+                    vscode.window.showInformationMessage(`${selected.server.name} has no tools available`);
+                } else {
+                    const toolItems = tools.map(t => ({
+                        label: t.name,
+                        description: t.description
+                    }));
+                    await vscode.window.showQuickPick(toolItems, {
+                        placeHolder: `Tools from ${selected.server.name}`,
+                        canPickMany: false
+                    });
+                }
+            } else if (action === 'View Logs') {
+                logger.show();
+            }
+        }
+    });
+    context.subscriptions.push(manageMCPCommand);
+
+    const refreshMCPCommand = vscode.commands.registerCommand('rubin.refreshMCPServers', async () => {
+        await initializeMCPServers();
+        vscode.window.showInformationMessage('MCP servers refreshed');
+    });
+    context.subscriptions.push(refreshMCPCommand);
+
     // Listen for configuration changes
     const configChangeDisposable = onConfigChange((newConfig) => {
         completionProvider.updateConfig(newConfig);
         updateStatusBar(newConfig.enabled, newConfig.model);
         logger.debug('Configuration updated', newConfig);
+        
+        // Refresh MCP servers when config changes
+        initializeMCPServers();
     });
     context.subscriptions.push(configChangeDisposable);
 
@@ -208,6 +297,23 @@ async function checkConnectionOnStartup(): Promise<void> {
     }
 }
 
+async function initializeMCPServers(): Promise<void> {
+    try {
+        const mcpManager = getMCPManager();
+        await mcpManager.loadServersFromConfig();
+        
+        const servers = mcpManager.getServers();
+        const connectedCount = servers.filter(s => s.isConnected()).length;
+        
+        if (servers.length > 0) {
+            logger.info(`MCP: ${connectedCount}/${servers.length} servers connected`);
+        }
+    } catch (error) {
+        logger.error('Failed to initialize MCP servers', error);
+    }
+}
+
 export function deactivate() {
+    disposeMCPManager();
     logger.info('Rubin extension deactivated');
 }
