@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { LocalCopilotCompletionProvider } from './completionProvider';
-import { getConfig, setEnabled, setModel, onConfigChange } from './config';
+import { getConfig, setEnabled, setModel, onConfigChange, getAnthropicApiKey, setAnthropicApiKey, deleteAnthropicApiKey } from './config';
 import { getOllamaClient } from './ollamaClient';
+import { CLAUDE_API_MODELS, CLAUDE_API_MODEL_IDS } from './anthropicClient';
 import { UnifiedPanelProvider } from './unifiedPanel';
 import { logger } from './logger';
 import { registerCodeActionProvider, registerCodeActionCommands } from './codeActions';
@@ -84,28 +85,70 @@ export function activate(context: vscode.ExtensionContext) {
         context.subscriptions.push(toggleCommand);
 
         const selectModelCommand = vscode.commands.registerCommand('rubin.selectModel', async () => {
-            const client = getOllamaClient(getConfig().serverUrl);
-            const models = await client.getAvailableModels();
+            const apiKey = await getAnthropicApiKey(context);
+            const ollamaClient = getOllamaClient(getConfig().serverUrl);
+            const ollamaModels = await ollamaClient.getAvailableModels();
 
-            if (models.length === 0) {
-                vscode.window.showWarningMessage(
-                    'No models found. Make sure Ollama is running and has models installed.'
-                );
+            type ModelItem = vscode.QuickPickItem & { modelId: string };
+            const items: ModelItem[] = [];
+
+            // ☁️ Real Claude API models (only when API key is set)
+            if (apiKey) {
+                items.push({ label: '☁️  Claude API', kind: vscode.QuickPickItemKind.Separator, modelId: '' });
+                for (const m of CLAUDE_API_MODELS) {
+                    items.push({ label: m.id, description: m.label, modelId: m.id });
+                }
+            }
+
+            // 💻 Local Ollama models
+            items.push({ label: '💻  Local (Ollama)', kind: vscode.QuickPickItemKind.Separator, modelId: '' });
+            for (const m of ollamaModels) {
+                const isClaudeCompat = m.startsWith('qwen3-coder') || m.startsWith('glm-4') || m.startsWith('gpt-oss');
+                items.push({ label: m, description: isClaudeCompat ? '⚡ Claude-compatible' : '', modelId: m });
+            }
+
+            if (ollamaModels.length === 0 && !apiKey) {
+                vscode.window.showWarningMessage('No models found. Make sure Ollama is running.');
                 return;
             }
 
-            const selected = await vscode.window.showQuickPick(models, {
-                placeHolder: 'Select a model for code completion',
-                title: 'Rubin: Select Model'
-            });
+            const selected = await vscode.window.showQuickPick(items.filter(i => i.modelId), {
+                placeHolder: 'Select a model',
+                title: 'Rubin – Claude for VS Code: Select Model'
+            }) as ModelItem | undefined;
 
-            if (selected) {
-                await setModel(selected);
-                updateStatusBar(getConfig().enabled, selected);
-                vscode.window.showInformationMessage(`Model changed to ${selected}`);
+            if (selected?.modelId) {
+                await setModel(selected.modelId);
+                updateStatusBar(getConfig().enabled, selected.modelId);
+                vscode.window.showInformationMessage(`Model changed to ${selected.modelId}`);
             }
         });
         context.subscriptions.push(selectModelCommand);
+
+        // Set Anthropic API Key (optional — enables real Claude API models)
+        const setApiKeyCommand = vscode.commands.registerCommand('rubin.setApiKey', async () => {
+            const current = await getAnthropicApiKey(context);
+            const key = await vscode.window.showInputBox({
+                title: 'Rubin: Set Anthropic API Key',
+                prompt: 'Enter your Anthropic API key. Leave blank to cancel. Local models always work without a key.',
+                value: current ? '••••••••••••••••' : '',
+                password: true,
+                placeHolder: 'sk-ant-api03-...',
+            });
+            if (key && !key.includes('•')) {
+                await setAnthropicApiKey(context, key);
+                vscode.window.showInformationMessage('✅ API key saved. Real Claude models now available in the model picker.');
+            }
+        });
+        context.subscriptions.push(setApiKeyCommand);
+
+        // Remove API Key (revert to local-only)
+        const clearApiKeyCommand = vscode.commands.registerCommand('rubin.clearApiKey', async () => {
+            await deleteAnthropicApiKey(context);
+            vscode.window.showInformationMessage('API key removed. Running on local models only.');
+        });
+        context.subscriptions.push(clearApiKeyCommand);
+
 
         const checkConnectionCommand = vscode.commands.registerCommand('rubin.checkConnection', async () => {
             const currentConfig = getConfig();

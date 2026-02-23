@@ -1,8 +1,8 @@
 {
   "name": "rubin",
-  "displayName": "Rubin - AI Coding Assistant",
-  "description": "Powerful AI coding assistant running 100% locally with Ollama. Features: streaming chat, 12 slash commands, autonomous agent mode, @mentions, MCP server integration, code actions, inline edit, smart context, and Claude-compatible models (qwen3-coder, gpt-oss). Private, fast, free.",
-  "version": "0.8.0",
+  "displayName": "Rubin – Claude for VS Code",
+  "description": "Claude for VS Code — powered locally by Ollama (qwen3-coder, gpt-oss) or optionally real Claude API. Streaming chat, 12 slash commands, autonomous agent (14 tools), @mentions, MCP servers, code actions, inline edit, smart context, persistent memory. 100% private.",
+  "version": "0.9.0",
   "publisher": "restlessankyyy",
   "author": {
     "name": "Ankit Raj"
@@ -144,6 +144,11 @@
               }
             }
           }
+        },
+        "rubin.anthropicApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "(Optional) Anthropic API key for real Claude models. Use 'Rubin: Set Anthropic API Key' command for secure storage instead."
         }
       }
     },
@@ -211,6 +216,14 @@
       {
         "command": "rubin.refreshMCPServers",
         "title": "Rubin: Refresh MCP Servers"
+      },
+      {
+        "command": "rubin.setApiKey",
+        "title": "Rubin: Set Anthropic API Key"
+      },
+      {
+        "command": "rubin.clearApiKey",
+        "title": "Rubin: Clear Anthropic API Key (Use Local Only)"
       }
     ],
     "menus": {

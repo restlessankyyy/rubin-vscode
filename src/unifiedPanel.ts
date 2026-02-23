@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { getConfig, setModel } from './config';
+import { getConfig, setModel, getAnthropicApiKey } from './config';
 import { getOllamaClient } from './ollamaClient';
 import { getClaudeOllamaClient, isClaudeModel } from './claudeOllamaClient';
+import { getAnthropicClient, isAnthropicModel, CLAUDE_API_MODEL_IDS } from './anthropicClient';
 import { getAgentProvider, AgentStep } from './agentProvider';
 import { ContextManager } from './contextManager';
 import { parseSlashCommand, buildCommandContext } from './slashCommands';
@@ -136,10 +137,16 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
     private async _loadModels() {
         const config = getConfig();
         const client = getOllamaClient(config.serverUrl);
-        const models = await client.getAvailableModels();
+        const ollamaModels = await client.getAvailableModels();
+
+        // Prepend real Claude API models if API key is configured
+        const apiKey = await getAnthropicApiKey(this._context);
+        const claudeApiModels = apiKey ? CLAUDE_API_MODEL_IDS : [];
+
         this._postMessage({
             type: 'modelsLoaded',
-            models: models,
+            models: [...claudeApiModels, ...ollamaModels],
+            claudeApiModels: claudeApiModels,
             currentModel: config.model
         });
     }
@@ -249,25 +256,36 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
                 }
             };
 
-            if (isClaudeModel(config.model)) {
-                // Claude-compatible models: use /api/chat with structured message history
+            if (isAnthropicModel(config.model)) {
+                // 1. Real Claude API (Anthropic) — only when API key is set
+                const apiKey = await getAnthropicApiKey(this._context);
+                if (apiKey) {
+                    const anthropicClient = getAnthropicClient(apiKey);
+                    const systemWithContext = context
+                        ? `${CHAT_SYSTEM_PROMPT}\n\n## Current Context\n\n${context}`
+                        : CHAT_SYSTEM_PROMPT;
+                    const msgs = [
+                        ...this._conversationHistory.slice(-10),
+                        { role: 'user' as const, content: processedMessage }
+                    ];
+                    await anthropicClient.generateChatStream(msgs, systemWithContext, config.model, 4096, streamCallbacks);
+                } else {
+                    // No key — tell user to set one or switch to local model
+                    streamCallbacks.onError?.(new Error('No Anthropic API key set. Run "Rubin: Set Anthropic API Key" or switch to a local model.'));
+                }
+            } else if (isClaudeModel(config.model)) {
+                // 2. Local Claude-compatible models via /api/chat
                 const claudeClient = getClaudeOllamaClient(config.serverUrl);
                 const systemWithContext = context
                     ? `${CHAT_SYSTEM_PROMPT}\n\n## Current Context\n\n${context}`
                     : CHAT_SYSTEM_PROMPT;
-                // Append the current processed message to history for the call
                 const messagesForClaude = [
                     ...this._conversationHistory.slice(-10),
                     { role: 'user' as const, content: processedMessage }
                 ];
-                await claudeClient.generateChatStream(
-                    messagesForClaude,
-                    systemWithContext,
-                    config,
-                    streamCallbacks
-                );
+                await claudeClient.generateChatStream(messagesForClaude, systemWithContext, config, streamCallbacks);
             } else {
-                // Standard Ollama models: use /api/generate with prompt string
+                // 3. Standard Ollama models via /api/generate
                 const prompt = this._buildChatPrompt(processedMessage, context);
                 await client.generateChatStream(prompt, config, streamCallbacks);
             }
@@ -281,7 +299,20 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
 
                 let response: string | null = null;
 
-                if (isClaudeModel(config.model)) {
+                if (isAnthropicModel(config.model)) {
+                    const apiKey = await getAnthropicApiKey(this._context);
+                    if (apiKey) {
+                        const anthropicClient = getAnthropicClient(apiKey);
+                        const systemWithContext = context
+                            ? `${CHAT_SYSTEM_PROMPT}\n\n## Current Context\n\n${context}`
+                            : CHAT_SYSTEM_PROMPT;
+                        const msgs = [
+                            ...this._conversationHistory.slice(-10),
+                            { role: 'user' as const, content: processedMessage }
+                        ];
+                        response = await anthropicClient.generateChat(msgs, systemWithContext, config.model);
+                    }
+                } else if (isClaudeModel(config.model)) {
                     const claudeClient = getClaudeOllamaClient(config.serverUrl);
                     const systemWithContext = context
                         ? `${CHAT_SYSTEM_PROMPT}\n\n## Current Context\n\n${context}`
