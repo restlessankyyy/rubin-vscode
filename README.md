@@ -4,13 +4,13 @@
   <img src="https://img.shields.io/badge/Ollama-Powered-blue?style=for-the-badge" alt="Ollama Powered"/>
   <img src="https://img.shields.io/badge/VS%20Code-Extension-007ACC?style=for-the-badge" alt="VS Code Extension"/>
   <img src="https://img.shields.io/badge/100%25-Private-green?style=for-the-badge" alt="100% Private"/>
-  <img src="https://img.shields.io/badge/v0.7.0-Latest-orange?style=for-the-badge" alt="v0.7.0"/>
+  <img src="https://img.shields.io/badge/v0.8.0-Latest-orange?style=for-the-badge" alt="v0.8.0"/>
 </p>
 
 <p align="center">
   <strong>Your AI coding assistant that runs entirely on your machine.</strong>
   <br>
-  Streaming Chat • 12 Slash Commands • Autonomous Agent • @Mentions • Smart Context • MCP Servers
+  Streaming Chat • 12 Slash Commands • Autonomous Agent • @Mentions • Smart Context • MCP Servers • Claude-Compatible Models
 </p>
 
 ---
@@ -165,6 +165,24 @@ After each response, Rubin suggests helpful next actions like:
 - "Add error handling"
 - "Show usage example"
 
+### 🧠 Claude-Compatible Models via Ollama
+
+Rubin v0.8.0 supports Claude-compatible models running **100% locally** via Ollama. These models use the optimised multi-turn `/api/chat` endpoint for better conversation quality:
+
+| Model | Description |
+|-------|-------------|
+| `qwen3-coder` | Best for coding tasks |
+| `glm-4.7` | Strong general reasoning |
+| `gpt-oss:20b` | Balanced quality/speed |
+| `gpt-oss:120b` | Highest quality |
+
+```bash
+# Pull a Claude-compatible model
+ollama pull qwen3-coder
+```
+
+Then select it from Rubin's model dropdown — it just works. No API keys, no cloud, no cost.
+
 ---
 
 ## 🚀 Quick Start
@@ -190,6 +208,10 @@ ollama serve
 ollama pull qwen2.5-coder:7b    # Fast & capable (recommended)
 ollama pull deepseek-coder:6.7b # Best quality
 ollama pull codellama:7b        # Good for completions
+
+# Claude-compatible models (new in v0.8.0)
+ollama pull qwen3-coder         # Best for coding (Claude-compatible)
+ollama pull gpt-oss:20b         # Balanced quality/speed (Claude-compatible)
 ```
 
 ### 3. Install Rubin
@@ -247,6 +269,8 @@ ollama pull codellama:7b        # Good for completions
 | Quality completions | `deepseek-coder:6.7b` |
 | General chat | `qwen2.5-coder:7b` |
 | Complex tasks | `deepseek-coder:33b` |
+| Claude-compatible coding | `qwen3-coder` |
+| Claude-compatible heavy tasks | `gpt-oss:120b` |
 
 ---
 
@@ -264,10 +288,10 @@ ollama pull codellama:7b        # Good for completions
 │         │                 │                    │            │
 │         └─────────┬───────┴────────────────────┘            │
 │                   │                                          │
-│         ┌─────────▼─────────┐                               │
-│         │   Ollama Client   │ ◄── Streaming Support         │
-│         │  (HTTP Client)    │                               │
-│         └─────────┬─────────┘                               │
+│         ┌─────────▼──────────────────────┐                 │
+│         │   OllamaClient  /api/generate │ ◄── Standard     │
+│         │   ClaudeOllamaClient /api/chat│ ◄── Claude compat│
+│         └─────────┬──────────────────────┘                 │
 │                   │                                          │
 │  ┌────────────────┼────────────────────────────────────┐   │
 │  │                │       Context Layer                 │   │
@@ -291,7 +315,8 @@ ollama pull codellama:7b        # Good for completions
               │  ┌───────────────────┐  │
               │  │   Local LLM       │  │
               │  │ (qwen, deepseek,  │  │
-              │  │  codellama, etc.) │  │
+              │  │  qwen3-coder,     │  │
+              │  │  gpt-oss, glm...) │  │
               │  └───────────────────┘  │
               └─────────────────────────┘
 ```
@@ -303,8 +328,9 @@ ollama pull codellama:7b        # Good for completions
 ```
 rubin/
 ├── src/
-│   ├── extension.ts      # Entry point
-│   ├── ollamaClient.ts   # HTTP client with streaming
+│   ├── extension.ts           # Entry point
+│   ├── ollamaClient.ts        # Ollama /api/generate client
+│   ├── claudeOllamaClient.ts  # Claude-compat /api/chat client (v0.8.0)
 │   ├── unifiedPanel.ts   # Chat/Agent webview
 │   ├── agentProvider.ts  # Autonomous agent (14+ tools)
 │   ├── mcpClient.ts      # MCP server integration
