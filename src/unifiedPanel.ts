@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getConfig, setModel } from './config';
 import { getOllamaClient } from './ollamaClient';
+import { getClaudeOllamaClient, isClaudeModel } from './claudeOllamaClient';
 import { getAgentProvider, AgentStep } from './agentProvider';
 import { ContextManager } from './contextManager';
 import { parseSlashCommand, buildCommandContext } from './slashCommands';
@@ -102,7 +103,7 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
 
         // Load models when view opens
         this._loadModels();
-        
+
         // Restore any existing conversation
         this._restoreConversation();
     }
@@ -162,10 +163,10 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
     private async _handleChatMessage(message: string) {
         // Check for slash commands
         const { command, args } = parseSlashCommand(message);
-        
+
         let processedMessage = message;
         let slashCommandContext = '';
-        
+
         if (command) {
             // Handle /help specially - just return the help text
             if (command.name === 'help') {
@@ -174,7 +175,7 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
                 this._postMessage({ type: 'assistantMessage', content: helpText });
                 return;
             }
-            
+
             // Build context and execute the slash command to get the prompt
             const context = await buildCommandContext();
             slashCommandContext = await command.handler(args, context);
@@ -211,48 +212,81 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
             }
 
             // Use streaming for real-time response
-            const prompt = this._buildChatPrompt(processedMessage, context);
             const hasCodeContext = context.includes('```') || message.includes('code');
-            
+
             // Create a message placeholder for streaming
             this._postMessage({ type: 'streamStart' });
 
-            await client.generateChatStream(
-                prompt,
-                config,
-                {
-                    onToken: (token) => {
-                        this._postMessage({ type: 'streamToken', token });
-                    },
-                    onComplete: (response) => {
-                        this._conversationHistory.push({ role: 'assistant', content: response });
-                        this._postMessage({ type: 'streamEnd' });
-                        
-                        // Generate follow-up suggestions
-                        const followUps = generateFollowUpSuggestions(message, response, hasCodeContext);
-                        if (followUps.length > 0) {
-                            this._postMessage({ type: 'followUpSuggestions', suggestions: followUps });
-                        }
-                    },
-                    onError: (error) => {
-                        this._postMessage({
-                            type: 'error',
-                            content: `Streaming error: ${error.message}`
-                        });
+            const streamCallbacks = {
+                onToken: (token: string) => {
+                    this._postMessage({ type: 'streamToken', token });
+                },
+                onComplete: (response: string) => {
+                    this._conversationHistory.push({ role: 'assistant', content: response });
+                    this._postMessage({ type: 'streamEnd' });
+
+                    // Generate follow-up suggestions
+                    const followUps = generateFollowUpSuggestions(message, response, hasCodeContext);
+                    if (followUps.length > 0) {
+                        this._postMessage({ type: 'followUpSuggestions', suggestions: followUps });
                     }
+                },
+                onError: (error: Error) => {
+                    this._postMessage({
+                        type: 'error',
+                        content: `Streaming error: ${error.message}`
+                    });
                 }
-            );
+            };
+
+            if (isClaudeModel(config.model)) {
+                // Claude-compatible models: use /api/chat with structured message history
+                const claudeClient = getClaudeOllamaClient(config.serverUrl);
+                const systemWithContext = context
+                    ? `${CHAT_SYSTEM_PROMPT}\n\n## Current Context\n\n${context}`
+                    : CHAT_SYSTEM_PROMPT;
+                // Append the current processed message to history for the call
+                const messagesForClaude = [
+                    ...this._conversationHistory.slice(-10),
+                    { role: 'user' as const, content: processedMessage }
+                ];
+                await claudeClient.generateChatStream(
+                    messagesForClaude,
+                    systemWithContext,
+                    config,
+                    streamCallbacks
+                );
+            } else {
+                // Standard Ollama models: use /api/generate with prompt string
+                const prompt = this._buildChatPrompt(processedMessage, context);
+                await client.generateChatStream(prompt, config, streamCallbacks);
+            }
 
         } catch (error) {
             // Fall back to non-streaming if streaming fails
             try {
                 const config = getConfig();
-                const client = getOllamaClient(config.serverUrl);
                 const contextItems = await this._contextManager.getContext();
                 const context = this._contextManager.formatContextForPrompt(contextItems);
-                const prompt = this._buildChatPrompt(processedMessage, context);
-                
-                const response = await client.generateChat(prompt, config);
+
+                let response: string | null = null;
+
+                if (isClaudeModel(config.model)) {
+                    const claudeClient = getClaudeOllamaClient(config.serverUrl);
+                    const systemWithContext = context
+                        ? `${CHAT_SYSTEM_PROMPT}\n\n## Current Context\n\n${context}`
+                        : CHAT_SYSTEM_PROMPT;
+                    const messagesForClaude = [
+                        ...this._conversationHistory.slice(-10),
+                        { role: 'user' as const, content: processedMessage }
+                    ];
+                    response = await claudeClient.generateChat(messagesForClaude, systemWithContext, config);
+                } else {
+                    const ollamaClient = getOllamaClient(config.serverUrl);
+                    const prompt = this._buildChatPrompt(processedMessage, context);
+                    response = await ollamaClient.generateChat(prompt, config);
+                }
+
                 if (response) {
                     this._conversationHistory.push({ role: 'assistant', content: response });
                     this._postMessage({ type: 'assistantMessage', content: response });
