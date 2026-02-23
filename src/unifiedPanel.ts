@@ -9,6 +9,8 @@ import { parseSlashCommand, buildCommandContext } from './slashCommands';
 import { processMessage } from './participants';
 import { CHAT_SYSTEM_PROMPT, generateFollowUpSuggestions } from './prompts';
 
+const HISTORY_STATE_KEY = 'rubin.conversationHistory';
+
 export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'rubin.unifiedView';
     private _view?: vscode.WebviewView;
@@ -17,8 +19,13 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
     private _currentMode: 'chat' | 'agent' = 'chat';
     private _contextManager: ContextManager;
 
-    constructor(private readonly _extensionUri: vscode.Uri) {
+    constructor(private readonly _context: vscode.ExtensionContext) {
         this._contextManager = new ContextManager();
+        // Restore persisted conversation history on startup
+        const saved = this._context.globalState.get<Array<{ role: 'user' | 'assistant'; content: string }>>(HISTORY_STATE_KEY);
+        if (saved && saved.length > 0) {
+            this._conversationHistory = saved;
+        }
     }
 
     // ... resolveWebviewView ...
@@ -31,7 +38,7 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [this._extensionUri]
+            localResourceRoots: [this._context.extensionUri]
         };
 
         webviewView.webview.html = this._getHtmlForWebview();
@@ -67,6 +74,7 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
                 case 'clearChat':
                     this._conversationHistory = [];
                     this._attachedFiles = [];
+                    this._context.globalState.update(HISTORY_STATE_KEY, []);
                     getAgentProvider().clearHistory();
                     this._postMessage({ type: 'cleared' });
                     break;
@@ -188,6 +196,7 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
 
         // Add user message to history
         this._conversationHistory.push({ role: 'user', content: message });
+        this._persistHistory();
         this._postMessage({ type: 'userMessage', content: message });
         this._postMessage({ type: 'typing', isTyping: true });
 
@@ -223,6 +232,7 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
                 },
                 onComplete: (response: string) => {
                     this._conversationHistory.push({ role: 'assistant', content: response });
+                    this._persistHistory();
                     this._postMessage({ type: 'streamEnd' });
 
                     // Generate follow-up suggestions
@@ -289,6 +299,7 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
 
                 if (response) {
                     this._conversationHistory.push({ role: 'assistant', content: response });
+                    this._persistHistory();
                     this._postMessage({ type: 'assistantMessage', content: response });
                 } else {
                     this._postMessage({
@@ -365,6 +376,12 @@ export class UnifiedPanelProvider implements vscode.WebviewViewProvider {
 
         prompt += `User: ${message}\n\nAssistant:`;
         return prompt;
+    }
+
+    private _persistHistory(): void {
+        // Keep last 50 turns to avoid bloating globalState
+        const trimmed = this._conversationHistory.slice(-50);
+        this._context.globalState.update(HISTORY_STATE_KEY, trimmed);
     }
 
     private _postMessage(message: unknown) {
