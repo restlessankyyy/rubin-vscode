@@ -1,8 +1,8 @@
 {
   "name": "rubin",
   "displayName": "Rubin - AI Coding Assistant",
-  "description": "Powerful AI coding assistant running 100% locally with Ollama. Features: streaming chat, 12 slash commands, autonomous agent mode, @mentions, MCP server integration, code actions, inline edit, and smart context. Private, fast, free.",
-  "version": "0.7.0",
+  "description": "Powerful AI coding assistant running 100% locally with Ollama. Features: streaming chat, 12 slash commands, autonomous agent mode, @mentions, MCP server integration, code actions, inline edit, smart context, and Claude-compatible models (qwen3-coder, gpt-oss). Private, fast, free.",
+  "version": "0.8.0",
   "publisher": "restlessankyyy",
   "author": {
     "name": "Ankit Raj"
@@ -30,6 +30,7 @@
     "Other"
   ],
   "keywords": [
+    "claude",
     "ai",
     "copilot",
     "ollama",
@@ -84,7 +85,7 @@
         "rubin.model": {
           "type": "string",
           "default": "llama3.1:8b",
-          "description": "Model to use for completions (e.g., llama3.1:8b, codellama, qwen2.5-coder:7b)"
+          "description": "Model to use (e.g., llama3.1:8b, codellama, qwen2.5-coder:7b). Claude-compatible models via Ollama: qwen3-coder, glm-4.7, gpt-oss:20b, gpt-oss:120b"
         },
         "rubin.maxTokens": {
           "type": "number",
@@ -112,7 +113,10 @@
           "description": "MCP (Model Context Protocol) servers to connect to",
           "items": {
             "type": "object",
-            "required": ["name", "command"],
+            "required": [
+              "name",
+              "command"
+            ],
             "properties": {
               "name": {
                 "type": "string",
@@ -124,7 +128,9 @@
               },
               "args": {
                 "type": "array",
-                "items": { "type": "string" },
+                "items": {
+                  "type": "string"
+                },
                 "description": "Command line arguments"
               },
               "env": {
