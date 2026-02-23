@@ -1,27 +1,29 @@
-# Rubin 🤖
+# Rubin – Claude for VS Code 🤖
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Ollama-Powered-blue?style=for-the-badge" alt="Ollama Powered"/>
-  <img src="https://img.shields.io/badge/VS%20Code-Extension-007ACC?style=for-the-badge" alt="VS Code Extension"/>
+  <img src="https://img.shields.io/badge/Claude-Powered-CC785C?style=for-the-badge" alt="Claude Powered"/>
+  <img src="https://img.shields.io/badge/Ollama-Local-blue?style=for-the-badge" alt="Ollama Local"/>
   <img src="https://img.shields.io/badge/100%25-Private-green?style=for-the-badge" alt="100% Private"/>
-  <img src="https://img.shields.io/badge/v0.8.0-Latest-orange?style=for-the-badge" alt="v0.8.0"/>
+  <img src="https://img.shields.io/badge/v0.9.0-Latest-orange?style=for-the-badge" alt="v0.9.0"/>
 </p>
 
 <p align="center">
-  <strong>Your AI coding assistant that runs entirely on your machine.</strong>
+  <strong>Claude for VS Code — runs 100% locally on Ollama. Real Anthropic API optionally.</strong>
   <br>
-  Streaming Chat • 12 Slash Commands • Autonomous Agent • @Mentions • Smart Context • MCP Servers • Claude-Compatible Models
+  Streaming Chat • 12 Slash Commands • Autonomous Agent • @Mentions • MCP Servers • Persistent Memory • Claude Models
 </p>
 
 ---
 
 ## 🔥 Why Rubin?
 
-- **🔒 100% Private** - Your code never leaves your machine
-- **⚡ Fast** - Local inference with no network latency
-- **💰 Free** - No subscriptions, no API costs
-- **🌐 Offline** - Works without internet
-- **🎯 Powerful** - Agent mode can execute multi-step tasks autonomously
+- **🔒 100% Private** — Code never leaves your machine (local-first by design)
+- **⚡ Fast** — Local inference, zero network latency
+- **💰 Free** — No subscriptions. No API costs. Local models are free forever
+- **🌐 Offline** — Works without internet
+- **🧠 Claude-Powered** — `qwen3-coder` is Claude-compatible and runs locally
+- **☁️ Optional Real Claude** — Add an Anthropic API key to unlock `claude-sonnet-4-5`, `claude-opus-4-5` etc
+- **🎯 Agentic** — Agent mode autonomously edits files, searches code, and runs commands
 
 ---
 
@@ -165,23 +167,32 @@ After each response, Rubin suggests helpful next actions like:
 - "Add error handling"
 - "Show usage example"
 
-### 🧠 Claude-Compatible Models via Ollama
+### 🧠 Claude Models — Local & Cloud
 
-Rubin v0.8.0 supports Claude-compatible models running **100% locally** via Ollama. These models use the optimised multi-turn `/api/chat` endpoint for better conversation quality:
+**Local Claude-compatible models (default, free, private):**
+
+| Model | Pull Command | Best For |
+|-------|-------------|----------|
+| `qwen3-coder` | `ollama pull qwen3-coder` | Code generation ← **default** |
+| `glm-4.7` | `ollama pull glm-4.7` | General reasoning |
+| `gpt-oss:20b` | `ollama pull gpt-oss:20b` | Balanced tasks |
+| `gpt-oss:120b` | `ollama pull gpt-oss:120b` | Complex tasks |
+
+**Real Anthropic API models (optional, requires API key):**
 
 | Model | Description |
 |-------|-------------|
-| `qwen3-coder` | Best for coding tasks |
-| `glm-4.7` | Strong general reasoning |
-| `gpt-oss:20b` | Balanced quality/speed |
-| `gpt-oss:120b` | Highest quality |
+| `claude-opus-4-5` | Most powerful |
+| `claude-sonnet-4-5` | Best balance |
+| `claude-haiku-3-5` | Fastest |
+| `claude-3-5-sonnet-20241022` | Prior generation |
 
-```bash
-# Pull a Claude-compatible model
-ollama pull qwen3-coder
-```
+To enable real Claude: `Cmd+Shift+P` → **Rubin: Set Anthropic API Key** → paste your key → done.
+Real Claude models appear at the **top** of the model dropdown. Without a key, everything runs locally.
 
-Then select it from Rubin's model dropdown — it just works. No API keys, no cloud, no cost.
+### 💾 Persistent Chat Memory
+
+Conversation history is automatically saved to VS Code's encrypted storage and **restored when you reopen the panel** — even after restarting VS Code. Use **Clear Chat** to wipe it.
 
 ---
 
@@ -204,22 +215,26 @@ curl -fsSL https://ollama.ai/install.sh | sh
 ```bash
 ollama serve
 
-# In another terminal - pick your model:
-ollama pull qwen2.5-coder:7b    # Fast & capable (recommended)
-ollama pull deepseek-coder:6.7b # Best quality
-ollama pull codellama:7b        # Good for completions
+# Pull the default Claude-compatible model (recommended)
+ollama pull qwen3-coder
 
-# Claude-compatible models (new in v0.8.0)
-ollama pull qwen3-coder         # Best for coding (Claude-compatible)
-ollama pull gpt-oss:20b         # Balanced quality/speed (Claude-compatible)
+# Or other models:
+ollama pull deepseek-coder:6.7b  # FIM completions
+ollama pull llama3.1:8b          # General chat
 ```
 
 ### 3. Install Rubin
 
 1. Open VS Code
-2. `Cmd+Shift+X` → Search "Rubin"
-3. Click Install
-4. Open the Rubin sidebar (🤖 icon)
+2. `Cmd+Shift+X` → Search **"Rubin Claude"**
+3. Click Install → open sidebar 🤖
+
+### 4. (Optional) Enable Real Claude API
+
+```
+Cmd+Shift+P → "Rubin: Set Anthropic API Key" → paste sk-ant-...
+```
+Keep empty to stay 100% local and free.
 
 ---
 
@@ -228,12 +243,13 @@ ollama pull gpt-oss:20b         # Balanced quality/speed (Claude-compatible)
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `rubin.serverUrl` | `http://localhost:11434` | Ollama server URL |
-| `rubin.model` | `qwen2.5-coder:7b` | Model for completions/chat |
-| `rubin.enableCompletions` | `true` | Enable inline completions |
-| `rubin.maxTokens` | `256` | Max tokens for completions |
-| `rubin.temperature` | `0.2` | Creativity (0-1) |
-| `rubin.debounceTime` | `300` | Completion delay (ms) |
-| `rubin.mcpServers` | `[]` | MCP server configurations |
+| `rubin.model` | `qwen3-coder:latest` | Active model |
+| `rubin.maxTokens` | `150` | Max tokens for inline completions |
+| `rubin.temperature` | `0.2` | Creativity (0–1) |
+| `rubin.debounceMs` | `300` | Completion trigger delay (ms) |
+| `rubin.mcpServers` | `[]` | MCP server list |
+
+**API key** is stored in VS Code SecretStorage (encrypted), not in `settings.json`. Use the command palette to set it.
 
 ---
 
@@ -265,12 +281,12 @@ ollama pull gpt-oss:20b         # Balanced quality/speed (Claude-compatible)
 
 | Use Case | Recommended Model |
 |----------|-------------------|
-| Fast completions | `qwen2.5-coder:3b` |
-| Quality completions | `deepseek-coder:6.7b` |
-| General chat | `qwen2.5-coder:7b` |
-| Complex tasks | `deepseek-coder:33b` |
-| Claude-compatible coding | `qwen3-coder` |
-| Claude-compatible heavy tasks | `gpt-oss:120b` |
+| Fast completions | `deepseek-coder:6.7b` |
+| Local Claude coding | `qwen3-coder` ← **default** |
+| Local Claude heavy | `gpt-oss:20b` |
+| Best quality (cloud) | `claude-opus-4-5` |
+| Best balance (cloud) | `claude-sonnet-4-5` |
+| Fastest (cloud) | `claude-haiku-3-5` |
 
 ---
 
@@ -288,10 +304,11 @@ ollama pull gpt-oss:20b         # Balanced quality/speed (Claude-compatible)
 │         │                 │                    │            │
 │         └─────────┬───────┴────────────────────┘            │
 │                   │                                          │
-│         ┌─────────▼──────────────────────┐                 │
-│         │   OllamaClient  /api/generate │ ◄── Standard     │
-│         │   ClaudeOllamaClient /api/chat│ ◄── Claude compat│
-│         └─────────┬──────────────────────┘                 │
+│         ┌─────────▼───────────────────────────────┐      │
+│         │  AnthropicClient   api.anthropic.com  │ ☁️   │
+│         │  ClaudeOllamaClient /api/chat (local) │ ⚡   │
+│         │  OllamaClient      /api/generate      │ 🖥️   │
+│         └─────────┬───────────────────────────────┘      │
 │                   │                                          │
 │  ┌────────────────┼────────────────────────────────────┐   │
 │  │                │       Context Layer                 │   │
@@ -328,21 +345,22 @@ ollama pull gpt-oss:20b         # Balanced quality/speed (Claude-compatible)
 ```
 rubin/
 ├── src/
-│   ├── extension.ts           # Entry point
-│   ├── ollamaClient.ts        # Ollama /api/generate client
-│   ├── claudeOllamaClient.ts  # Claude-compat /api/chat client (v0.8.0)
-│   ├── unifiedPanel.ts   # Chat/Agent webview
-│   ├── agentProvider.ts  # Autonomous agent (14+ tools)
-│   ├── mcpClient.ts      # MCP server integration
-│   ├── completionProvider.ts  # Inline completions
-│   ├── slashCommands.ts  # 12 slash commands
-│   ├── participants.ts   # @mentions system
-│   ├── codeActions.ts    # Right-click menu
-│   ├── inlineChat.ts     # Inline edit
-│   ├── gitIntegration.ts # Commit message generator
-│   ├── smartContext.ts   # Intelligent context selection
-│   ├── prompts.ts        # System prompts
-│   └── config.ts         # Settings management
+│   ├── extension.ts           # Entry point + commands
+│   ├── anthropicClient.ts    # Real Anthropic API client (v0.9.0)
+│   ├── claudeOllamaClient.ts # Local Claude /api/chat client
+│   ├── ollamaClient.ts       # Ollama /api/generate client
+│   ├── unifiedPanel.ts       # Chat/Agent webview + routing
+│   ├── agentProvider.ts      # Autonomous agent (14+ tools)
+│   ├── mcpClient.ts          # MCP server integration
+│   ├── completionProvider.ts # Inline completions
+│   ├── slashCommands.ts      # 12 slash commands
+│   ├── participants.ts       # @mentions system
+│   ├── codeActions.ts        # Right-click menu
+│   ├── inlineChat.ts         # Inline edit
+│   ├── gitIntegration.ts     # Commit message generator
+│   ├── smartContext.ts       # Intelligent context selection
+│   ├── prompts.ts            # System prompts
+│   └── config.ts             # Settings + SecretStorage
 ├── docs/
 │   └── ARCHITECTURE.md   # Technical documentation
 ├── package.json
@@ -371,8 +389,9 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 ## 🙏 Credits
 
-- [Ollama](https://ollama.ai/) - Local LLM runtime
-- [VS Code API](https://code.visualstudio.com/api) - Extension platform
+- [Ollama](https://ollama.ai/) — Local LLM runtime
+- [Anthropic](https://anthropic.com/) — Claude API
+- [VS Code API](https://code.visualstudio.com/api) — Extension platform
 
 ---
 
